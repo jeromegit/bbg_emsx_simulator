@@ -57,7 +57,7 @@ class ServerApplication(fix.Application):
         msg_type = get_header_field_value(message, fix.MsgType())
         if msg_type == fix.MsgType_IOI:
             uuid = get_header_field_value(message, fix.SenderSubID())
-            uuid_orders = self.order_manager.get_uuid_orders(uuid)
+            uuid_orders = self.order_manager.get_orders_for_uuid(uuid)
             for order in uuid_orders:
 #                print(f"order:{order}")
                 message = self.create_order_message(order)

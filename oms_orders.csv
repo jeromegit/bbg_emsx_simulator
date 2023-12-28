@@ -1,6 +1,7 @@
-order_id,uuid,symbol,side,shares,price
-1,1234,AAPL,Buy,100,150.0
-2,1234,GOOGL,Sell,50,2500.0
-3,1234,AMZN,Buy,30,3100.0
-4,5678,TSLA,Sell,20,700.0
-5,5678,MSFT,Buy,10,280.0
+order_id,is_active,uuid,symbol,side,shares,price
+456,True,1234,AAPL,Sell,1000,15.11
+2.0,True,1234,GOOGL,Sell,5000,25.25
+3.0,True,1234,DDD,Short,30000,31.13
+4.0,True,5678,YYY,Buy,22222,700.0
+999.0,True,5678,ZXX,Buy,10,280.88
+123.0,False,777,ZZZ,Buy,10000,12.34

@@ -1,0 +1,16 @@
+I want to create an application called bbg_emsx_simulator that simulates a FIX server and more specifically it should follow The Bloomberg IOI Network Indications of Interest & Trade Advertisement Fix Specification
+It should use python and poetry
+Use Python 3.11 or higher
+
+For the FIX protocol communication it should reply on the quickfix libraries
+Use the FIX version 4.2
+
+The server will mantain some fake OMS orders in a csv file called oms_orders.csv. The columns of the file will be as follows: order_id, uuid, symbol, side, shares, price
+The server will also have a streamlit component that shows the content of the oms_orders.csv as an editbale grid to an admin person and that admin person will be able to edit the content of the grid and save it
+Suggest 5 rows for that csv file to start with and insert them into the file. shares should be > 10000. The order_id is unique and can be used as an index.
+It should use a version of streamlit that supports editable tables
+
+I also want to create a client to test the server.
+That client will connect using a FIX session and promptly send a 35=6 FIX message with 50=1234 where 1234 is the UUID of the loging user
+The server will respond by sending the orders currently in the oms_orders.csv file for which the uuid column = 1234. Each order should generate a 35=D message back to the client where the columns of the order should be sent as normal symbol in tag 55, side in tag 54 with 1=buy and 2=sell, shares in tag38, etc... tag50 should be the UUID
+When the client sends a reserve request with 35=D, when the qty sent is odd, reject the reserve request, if the qty is even accept the request and send back a 35=D message with reserved shares.

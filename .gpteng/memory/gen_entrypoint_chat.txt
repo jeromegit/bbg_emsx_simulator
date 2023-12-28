@@ -1,0 +1,13 @@
+```sh
+# Install dependencies using Poetry
+poetry install
+
+# Run the FIX server
+poetry run python fix_server.py server.cfg &
+
+# Run the FIX client
+poetry run python fix_client.py client.cfg &
+
+# Run the Streamlit app
+poetry run streamlit run streamlit_app.py &
+```

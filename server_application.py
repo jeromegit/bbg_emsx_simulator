@@ -1,13 +1,14 @@
 import queue
 from datetime import datetime
 from enum import Enum
-from typing import Tuple, List, Set
+from typing import Tuple, Set
 from queue import Queue
 
 import quickfix as fix
 from pandas import Series
 
-from fix_application import get_header_field_value, get_field_value, message_to_string, string_to_message
+from fix_application import get_header_field_value, message_to_string, string_to_message, FIXApplication
+
 from order_manager import OrderManager
 
 
@@ -96,13 +97,21 @@ class ServerApplication(fix.Application):
     def is_uuid_of_interest(uuid: str) -> bool:
         return str(uuid) in ServerApplication.uuids_of_interest
 
+
     @staticmethod
     def create_order_message(action: MessageAction, order: Series) -> fix.Message:
         side = ServerApplication.side_str_to_fix(order['side'])
         transact_time = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")
-        fix_string = f"11={ServerApplication.get_next_clordid()} 50={order['uuid']} " + \
+        clordid = ServerApplication.get_next_clordid()
+        order_id = order['order_id']
+        fix_string = f"11={clordid} 50={order['uuid']} 37={order_id} " + \
                      f"55={order['symbol']} 54={side} 38={order['shares']} 44={order['price']:.2f} " + \
                      f"21=3 40=2 60={transact_time}"
+        if action == MessageAction.ChangeOrder or action == MessageAction.CancelOrder:
+            latest_clordid = FIXApplication.get_latest_clordid_per_order_id(order_id)
+            fix_string += f" 41={latest_clordid}"
+
+        FIXApplication.set_latest_clordid_per_order_id(order_id, clordid)
 
         message = string_to_message(action.value, fix_string)
         print(f"Created order:{message_to_string(message)}")

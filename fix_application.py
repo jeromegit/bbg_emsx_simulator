@@ -1,32 +1,41 @@
-import pdb
-from typing import List
+from datetime import datetime
+from typing import Dict
 
 import quickfix as fix
 from quickfix import Message
 
 
 class FIXApplication(fix.Application):
+    latest_clordid_per_order_id: Dict[str, str] = {}
 
-    def onCreate(self, sessionID):
+    def onCreate(self, session_id):
         pass
 
-    def onLogon(self, sessionID):
-        print(f"Session {sessionID} logged on.")
+    def onLogon(self, session_id):
+        print(f"Session {session_id} logged on.")
 
-    def onLogout(self, sessionID):
-        print(f"Session {sessionID} logged out.")
+    def onLogout(self, session_id):
+        print(f"Session {session_id} logged out.")
 
-    def toAdmin(self, message, sessionID):
+    def toAdmin(self, message, session_id):
         pass
 
-    def fromAdmin(self, message, sessionID):
+    def fromAdmin(self, message, session_id):
         pass
 
-    def toApp(self, message, sessionID):
+    def toApp(self, message, session_id):
         pass
 
-    def fromApp(self, message, sessionID):
+    def fromApp(self, message, session_id):
         print(f"Received message:{message_to_string(message)}")
+
+    @staticmethod
+    def set_latest_clordid_per_order_id(order_id: str, clordid: str) -> str:
+        FIXApplication.latest_clordid_per_order_id[order_id] = clordid
+
+    @staticmethod
+    def get_latest_clordid_per_order_id(order_id: str) -> str:
+        return FIXApplication.latest_clordid_per_order_id.get(order_id, None)
 
 
 def string_to_message(message_type: int, fix_string: str, separator: str = ' ') -> Message:
@@ -65,3 +74,7 @@ def get_field_value(msg, fobj):
         return fobj.getValue()
     else:
         return None
+
+
+def timestamp() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]

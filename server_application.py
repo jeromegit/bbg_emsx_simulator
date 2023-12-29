@@ -101,7 +101,7 @@ class ServerApplication(fix.Application):
         side = ServerApplication.side_str_to_fix(order['side'])
         transact_time = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")
         fix_string = f"11={ServerApplication.get_next_clordid()} 50={order['uuid']} " + \
-                     f"55={order['symbol']} 54={side} 38={order['shares']} 44={order['price']} " + \
+                     f"55={order['symbol']} 54={side} 38={order['shares']} 44={order['price']:.2f} " + \
                      f"21=3 40=2 60={transact_time}"
 
         message = string_to_message(action.value, fix_string)

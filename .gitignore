@@ -113,4 +113,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# App specific
 store/
+oms_orders.csv
+oms_order_changes.json
+

@@ -1,5 +1,5 @@
 import quickfix as fix
-from fix_application import string_to_message
+from fix_application import string_to_message, message_to_string
 
 
 class ClientApplication(fix.Application):
@@ -23,7 +23,7 @@ class ClientApplication(fix.Application):
         pass
 
     def fromApp(self, message, sessionID):
-        print(f"CLIENT Received message: {message}")
+        print(f"CLIENT Received message: {message_to_string(message)}")
 
     def send_ioi_query(self, sessionID):
         uuid = 1234

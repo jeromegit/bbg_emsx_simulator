@@ -14,6 +14,7 @@ def main(config_file):
         print("FIX Server started.")
         while True:
             time.sleep(.5)
+            application.check_for_order_changes()
             if application.from_app_queue.not_empty:
                 application.process_message_from_app_queue()
 

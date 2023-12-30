@@ -1,14 +1,12 @@
 import queue
-from datetime import datetime
 from enum import Enum
-from typing import Tuple, Set
-from queue import Queue
+from typing import Set, Dict
 
 import quickfix as fix
 from pandas import Series
 
-from fix_application import get_header_field_value, message_to_string, string_to_message, FIXApplication, timestamp, \
-    get_utc_transactime
+from fix_application import message_to_string, string_to_message, FIXApplication, timestamp, \
+    get_utc_transactime, get_field_value, message_to_dict
 
 from order_manager import OrderManager
 
@@ -20,7 +18,6 @@ class MessageAction(Enum):
 
 
 class ServerApplication(fix.Application):
-    from_app_queue: Queue[Tuple[fix.Message, str]] = None
     order_manager = None
     session_id = None
     uuids_of_interest: Set[str] = set()
@@ -41,19 +38,23 @@ class ServerApplication(fix.Application):
         print(f"SERVER Session {session_id} logged out.")
 
     def toAdmin(self, message, session_id):
-        msg_type = get_header_field_value(message, fix.MsgType())
+        message = message_to_dict(message)
+        msg_type = get_field_value(message, fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
             print(f"{timestamp()} Sent ADMIN message: {message_to_string(message)}")
 
     def fromAdmin(self, message, session_id):
-        msg_type = get_header_field_value(message, fix.MsgType())
+        message = message_to_dict(message)
+        msg_type = get_field_value(message, fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
             print(f"{timestamp()} Rcvd ADMIN message: {message_to_string(message)}")
 
     def toApp(self, message, session_id):
+        message = message_to_dict(message)
         print(f"{timestamp()} Sent APP message: {message_to_string(message)}")
 
     def fromApp(self, message, session_id):
+        message = message_to_dict(message)
         print(f"{timestamp()} Rcvd APP message: {message_to_string(message)}")
         self.process_message(message)
 
@@ -67,16 +68,28 @@ class ServerApplication(fix.Application):
     def check_for_order_changes(self):
         self.order_manager.check_and_process_order_change_instructions()
 
-    def process_message(self, message: fix.Message)->None:
-        msg_type = get_header_field_value(message, fix.MsgType())
+    def process_message(self, message: Dict[str, str]) -> None:
+        msg_type = get_field_value(message, fix.MsgType())
         if msg_type == fix.MsgType_IOI:
-            uuid = get_header_field_value(message, fix.SenderSubID())
-            ServerApplication.uuids_of_interest.add(uuid)
-            uuid_orders = self.order_manager.get_orders_for_uuid(uuid)
-            for order in uuid_orders:
-                #                print(f"order:{order}")
-                message = ServerApplication.create_order_message(MessageAction.NewOrder, order)
-                ServerApplication.send_message(message)
+            self.process_ioi_message(message)
+        elif msg_type == fix.MsgType_NewOrderSingle:
+            self.process_reserve_request_message(message)
+
+    def process_ioi_message(self, message: Dict[str, str]):
+        uuid = get_field_value(message, fix.SenderSubID())
+        ServerApplication.uuids_of_interest.add(uuid)
+        uuid_orders = self.order_manager.get_orders_for_uuid(uuid)
+        for order in uuid_orders:
+            message = ServerApplication.create_order_message(MessageAction.NewOrder, order)
+            ServerApplication.send_message(message)
+
+    def process_reserve_request_message(self, message: Dict[str, str]):
+        order_id = get_field_value(message, fix.OrderID())
+        # odd/even order_id heuristic to decide whether to accept or reject request
+        if int(order_id[-1]) % 2 == 0:
+            # Accept but first send a 35=G with the reduced qty
+            pass
+
 
     @staticmethod
     def send_message(message: fix.Message):
@@ -94,7 +107,7 @@ class ServerApplication(fix.Application):
         return str(uuid) in ServerApplication.uuids_of_interest
 
     @staticmethod
-    def create_order_message(action: MessageAction, order: Series) -> fix.Message:
+    def create_order_message(action: MessageAction, order: Series | Dict[str, str]) -> fix.Message:
         side = ServerApplication.side_str_to_fix(order['side'])
         clordid = FIXApplication.get_next_clordid()
         order_id = order['order_id']

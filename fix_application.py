@@ -1,12 +1,16 @@
+import threading
 from datetime import datetime
-from typing import Dict, Union
+from typing import Dict, Union, Any
 
 import quickfix as fix
 from quickfix import Message
 
+self_lock = threading.Lock()
+
 
 class FIXApplication(fix.Application):
     latest_clordid_per_order_id: Dict[str, str] = {}
+    latest_fix_message_per_order_id: Dict[str, Dict[str, str]] = {}
     base_clordid = datetime.now().strftime("%Y%m%d%H%M%S")
     current_clordid = 0
 
@@ -49,6 +53,21 @@ class FIXApplication(fix.Application):
     def get_latest_clordid_per_order_id(order_id: str) -> Union[str, None]:
         return FIXApplication.latest_clordid_per_order_id.get(order_id, None)
 
+    @staticmethod
+    def set_latest_fix_message_per_order_id(order_id: str, message: Union[Dict[str, str], None]) -> None:
+        with self_lock:
+            if message:
+                FIXApplication.latest_fix_message_per_order_id[order_id] = message
+            else:
+                # since message is None, remove entry if exists
+                if order_id in FIXApplication.latest_fix_message_per_order_id:
+                    FIXApplication.latest_fix_message_per_order_id.pop(order_id)
+
+    @staticmethod
+    def get_latest_fix_message_per_order_id(order_id: str) -> Dict[str, str] | None:
+        with self_lock:
+            return FIXApplication.latest_fix_message_per_order_id.get(order_id, None)
+
 
 def string_to_message(message_type: int, fix_string: str, separator: str = ' ') -> Message:
     message = fix.Message()
@@ -65,14 +84,8 @@ def string_to_message(message_type: int, fix_string: str, separator: str = ' ') 
     return message
 
 
-def message_to_string(message: Message) -> str:
-    string_with_ctrla = message.toString()
-    string = string_with_ctrla.replace('\x01', '|')
-
-    return string
-
-def message_to_dict(message: Message) -> Dict[str,str]:
-    message_dict: Dict[str,str] = {}
+def message_to_dict(message: Message) -> Dict[str, str]:
+    message_dict: Dict[str, str] = {}
     string_with_ctrla = message.toString()
     kv_pairs = string_with_ctrla.split('\x01')
     for kv_pair in kv_pairs:
@@ -80,8 +93,18 @@ def message_to_dict(message: Message) -> Dict[str,str]:
             key, value = kv_pair.split('=')
             message_dict[key] = value
 
-
     return message_dict
+
+
+def message_to_string(message: fix.Message | Dict[str, str]) -> str:
+    if isinstance(message,fix.Message):
+        string_with_ctrla = message.toString()
+        string = string_with_ctrla.replace('\x01', '|')
+    else:
+        string = '|'.join([f"{k}={v}" for k, v in message.items()])
+
+    return string
+
 
 def get_header_field_value(msg, fobj) -> Union[str, None]:
     if msg.getHeader().isSetField(fobj.getField()):
@@ -91,12 +114,11 @@ def get_header_field_value(msg, fobj) -> Union[str, None]:
         return None
 
 
-def get_field_value(msg, fobj) -> Union[str, None]:
-    if msg.isSetField(fobj.getField()):
-        msg.getField(fobj)
-        return fobj.getValue()
-    else:
-        return None
+def get_field_value(message: Dict[str, str], fix_field_obj: Any) -> str:
+    fix_key_as_str = str(fix_field_obj.getField())
+    field_value = message.get(fix_key_as_str, None)
+
+    return field_value
 
 
 def timestamp() -> str:

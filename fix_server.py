@@ -3,6 +3,7 @@ import sys, time
 from server_application import ServerApplication
 from settings import get_settings
 
+
 def main(config_file):
     try:
         settings = get_settings(config_file)
@@ -22,6 +23,7 @@ def main(config_file):
         print(e)
     finally:
         acceptor.stop()
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

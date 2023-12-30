@@ -359,7 +359,8 @@
    </group>
    <field name='SettlmntTyp' required='N' />
    <field name='FutSettDate' required='N' />
-   <field name='HandlInst' required='Y' />
+   <!--  BBG Specific where on reserve request HandlInst is not set. So make it not mandatory here-->
+   <field name='HandlInst' required='N' />
    <field name='ExecInst' required='N' />
    <field name='MinQty' required='N' />
    <field name='MaxFloor' required='N' />
@@ -427,6 +428,7 @@
    <field name='ClearingAccount' required='N' />
    <!--  BBG Specific -->
    <field name='OrderID' required='N' />
+   <field name='ExecType' required='N' />
   </message>
   <message name='NewOrderList' msgtype='E' msgcat='app'>
    <field name='ListID' required='Y' />

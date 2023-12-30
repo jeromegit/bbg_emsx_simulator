@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Union
 
 import quickfix as fix
 from quickfix import Message
@@ -7,6 +7,8 @@ from quickfix import Message
 
 class FIXApplication(fix.Application):
     latest_clordid_per_order_id: Dict[str, str] = {}
+    base_clordid = datetime.now().strftime("%Y%m%d%H%M%S")
+    current_clordid = 0
 
     def onCreate(self, session_id):
         pass
@@ -30,11 +32,21 @@ class FIXApplication(fix.Application):
         print(f"Received message:{message_to_string(message)}")
 
     @staticmethod
-    def set_latest_clordid_per_order_id(order_id: str, clordid: str) -> str:
-        FIXApplication.latest_clordid_per_order_id[order_id] = clordid
+    def get_next_clordid():
+        FIXApplication.current_clordid += 1
+        return f"{FIXApplication.base_clordid}{FIXApplication.current_clordid:06}"
 
     @staticmethod
-    def get_latest_clordid_per_order_id(order_id: str) -> str:
+    def set_latest_clordid_per_order_id(order_id: str, clordid: Union[str, None]) -> str:
+        if clordid:
+            FIXApplication.latest_clordid_per_order_id[order_id] = clordid
+        else:
+            # since clordid is None, remove entry if exists
+            if order_id in FIXApplication.latest_clordid_per_order_id:
+                FIXApplication.latest_clordid_per_order_id.pop(order_id)
+
+    @staticmethod
+    def get_latest_clordid_per_order_id(order_id: str) -> Union[str, None]:
         return FIXApplication.latest_clordid_per_order_id.get(order_id, None)
 
 
@@ -59,8 +71,19 @@ def message_to_string(message: Message) -> str:
 
     return string
 
+def message_to_dict(message: Message) -> Dict[str,str]:
+    message_dict: Dict[str,str] = {}
+    string_with_ctrla = message.toString()
+    kv_pairs = string_with_ctrla.split('\x01')
+    for kv_pair in kv_pairs:
+        if '=' in kv_pair:
+            key, value = kv_pair.split('=')
+            message_dict[key] = value
 
-def get_header_field_value(msg, fobj):
+
+    return message_dict
+
+def get_header_field_value(msg, fobj) -> Union[str, None]:
     if msg.getHeader().isSetField(fobj.getField()):
         msg.getHeader().getField(fobj)
         return fobj.getValue()
@@ -68,7 +91,7 @@ def get_header_field_value(msg, fobj):
         return None
 
 
-def get_field_value(msg, fobj):
+def get_field_value(msg, fobj) -> Union[str, None]:
     if msg.isSetField(fobj.getField()):
         msg.getField(fobj)
         return fobj.getValue()
@@ -78,3 +101,7 @@ def get_field_value(msg, fobj):
 
 def timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
+def get_utc_transactime() -> str:
+    return datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")

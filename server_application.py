@@ -6,7 +6,7 @@ import quickfix as fix
 from pandas import Series
 
 from fix_application import message_to_string, string_to_message, FIXApplication, timestamp, \
-    get_utc_transactime, get_field_value, message_to_dict, set_field_value
+    get_utc_transactime, get_field_value, message_to_dict, set_field_value, log
 
 from order_manager import OrderManager
 
@@ -32,31 +32,29 @@ class ServerApplication(fix.Application):
 
     def onLogon(self, session_id):
         ServerApplication.session_id = session_id
-        print(
-            f"\nSERVER Session {session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        log('SERVER Session', f"{session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", '\n')
 
     def onLogout(self, session_id):
-        print(f"SERVER Session {session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        log('SERVER Session', f"{session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", '\n')
 
     def toAdmin(self, message, session_id):
         message = message_to_dict(message)
         msg_type = get_field_value(message, fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
-            print(f"{timestamp()} Sent ADMIN: {message_to_string(message)}")
+            log('Sent ADMIN', message)
 
     def fromAdmin(self, message, session_id):
         message = message_to_dict(message)
         msg_type = get_field_value(message, fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
-            print(f"{timestamp()} Rcvd ADMIN: {message_to_string(message)}")
+            log('Rcvd ADMIN', message)
 
     def toApp(self, message, session_id):
-        message = message_to_dict(message)
-        print(f"{timestamp()} Sent APP  : {message_to_string(message)}")
+        log('Sent APP', message)
 
     def fromApp(self, message, session_id):
         message = message_to_dict(message)
-        print(f"{timestamp()} Rcvd APP  : {message_to_string(message)}")
+        log('Rcvd APP', message)
         self.process_message(message)
 
     def process_message_from_app_queue(self):
@@ -156,9 +154,30 @@ class ServerApplication(fix.Application):
         side = ServerApplication.side_str_to_fix(order['side'])
         clordid = FIXApplication.get_next_clordid()
         order_id = order['order_id']
-        fix_string = f"11={clordid} 50={order['uuid']} 37={order_id} " + \
-                     f"55={order['symbol']} 54={side} 38={order['shares']} 44={order['price']:.2f} " + \
-                     f"21=3 40=2 60={get_utc_transactime()}"
+        currency = 'USD'
+        order_price = float(order['price'])
+        if order_price > 0.0:
+            order_type = fix.OrdType_LIMIT
+        else:
+            order_type = fix.OrdType_MARKET
+        fix_string = ' '.join([
+            f"11={clordid}",
+            f"15={currency}",
+            f"21={fix.HandlInst_MANUAL_ORDER_BEST_EXECUTION}",
+            f"37={order_id}",
+            f"38={order['shares']}",
+            f"44={order_price:.2f}",
+            f"40={order_type}",
+            f"50={order['uuid']}",
+            f"54={side}",
+            f"55={order['symbol']}",
+            f"59={fix.TimeInForce_DAY}",
+            f"60={get_utc_transactime()}",
+            f"100={FIXApplication.EX_DESTINATION}",
+            #            f"115={???}",  # OnBehalfOfCompID
+            #            f"116={???}",  # OnBehalfOfSubID
+            #            f"128={???}",  # DeliverToCompID
+        ])
 
         return fix_string
 

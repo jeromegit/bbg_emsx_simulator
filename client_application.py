@@ -3,63 +3,64 @@ from typing import Dict
 import quickfix as fix
 
 from fix_application import string_to_message, message_to_string, timestamp, FIXApplication, \
-    get_field_value, get_utc_transactime, message_to_dict
+    get_field_value, get_utc_transactime, message_to_dict, log
 
 
 class ClientApplication(fix.Application):
-    UUID = 1234
-    EXEC_BROKER = 'ITG'
-    EX_DESTINATION = 'US'
     session_id = None
     reserve_request_sent = False
+    reserve_request_accepted = False
+    dfd_sent = False
 
     def onCreate(self, session_id):
         pass
 
     def onLogon(self, session_id):
         self.session_id = session_id
-        print(
-            f"\n{timestamp()} CLIENT Session {session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        log('CLIENT Session', f"{session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", '\n')
         self.reserve_request_sent = False
         self.send_ioi_query(session_id)
 
     def onLogout(self, session_id):
-        print(f"{timestamp()} CLIENT Session {session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        log('CLIENT Session', f"{session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
     def toAdmin(self, message, session_id):
         message = message_to_dict(message)
         msg_type = get_field_value(message, fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
-            print(f"{timestamp()} Sent ADMIN: {message_to_string(message)}")
+            log('Sent ADMIN', message)
 
     def fromAdmin(self, message, session_id):
         message = message_to_dict(message)
         msg_type = get_field_value(message, fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
-            print(f"{timestamp()} Rcvd ADMIN: {message_to_string(message)}")
+            log('Rcvd ADMIN', message)
 
     def toApp(self, message, session_id):
-        message = message_to_dict(message)
-        print(f"{timestamp()} Sent APP  : {message_to_string(message)}")
+        log('Sent APP', message)
 
     def fromApp(self, message, session_id):
-        #        print("!!!!!!!!!!!!!!!!!!!!!! fromApp !!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         message = message_to_dict(message)
-        print(f"{timestamp()} Rcvd APP  : {message_to_string(message)}")
+        log('Rcvd APP', message)
         self.process_message(message)
 
     def process_message(self, message: Dict[str, str]) -> None:
         msg_type = get_field_value(message, fix.MsgType())
         order_id = get_field_value(message, fix.OrderID())
-        if (msg_type == fix.MsgType_NewOrderSingle or
-                msg_type == fix.MsgType_OrderCancelReplaceRequest):
-            FIXApplication.set_latest_fix_message_per_order_id(order_id, message)
+        if msg_type == fix.MsgType_NewOrderSingle:
+#                msg_type == fix.MsgType_OrderCancelReplaceRequest):
+            if get_field_value(message, fix.OrdStatus()) == fix.OrdStatus_NEW:
+                self.reserve_request_accepted = True
+                log("Reserved accepted")
+            else:
+                FIXApplication.set_latest_fix_message_per_order_id(order_id, message)
+
         elif msg_type == fix.MsgType_OrderCancelRequest:
             FIXApplication.set_latest_fix_message_per_order_id(order_id, None)
 
     def send_ioi_query(self, session_id):
         message = string_to_message(fix.MsgType_IOI,
-                                    f"23=na 28=N 55=NA 54=1 27=S 50={ClientApplication.UUID}")
+                                    f"23=na 28=N 55=NA 54=1 27=S 50={FIXApplication.UUID}")
         fix.Session.sendToTarget(message, session_id)
 
     def send_reserve_request(self, order_id: str):
@@ -71,22 +72,86 @@ class ClientApplication(fix.Application):
             order_id = get_field_value(latest_message, fix.OrderID())
             clordid = "ITGClOrdID:" + get_field_value(latest_message, fix.OrderID())
             message = string_to_message(fix.MsgType_NewOrderSingle, " ".join([
-#                f"11={FIXApplication.get_next_clordid()}",
+                #                f"11={FIXApplication.get_next_clordid()}",
                 f"11={clordid}",
                 f"37={order_id}",
                 f"38={get_field_value(latest_message, fix.OrderQty())}",
                 f"40={get_field_value(latest_message, fix.OrdType())}",
-                f"50={ClientApplication.UUID}",
+                f"50={FIXApplication.UUID}",
                 f"54={get_field_value(latest_message, fix.Side())}",
                 f"55={get_field_value(latest_message, fix.Symbol())}",
                 f"60={get_utc_transactime()}",
-                f"76={ClientApplication.EXEC_BROKER}",
-                f"100={ClientApplication.EX_DESTINATION}",
+                f"76={FIXApplication.EXEC_BROKER}",
+                f"100={FIXApplication.EX_DESTINATION}",
                 f"109={order_id}",
-                f"150={0}",  # ExecType: New/Ack
+                f"150={fix.ExecType_NEW}",
             ]))
 
-            print(f"{timestamp()} Sending REQUEST message: {message_to_string(message)}")
+            log("Snd REQUEST", message)
             fix.Session.sendToTarget(message, self.session_id)
 
             self.reserve_request_sent = True
+
+    def send_fill_or_dfd(self, order_id: str, is_dfd: bool = False):
+        if not self.reserve_request_accepted or self.dfd_sent:
+            return
+
+        latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
+        if latest_message:
+            order_id = get_field_value(latest_message, fix.OrderID())
+            order_qty = get_field_value(latest_message, fix.OrderQty())
+            clordid = get_field_value(latest_message, fix.ClOrdID())
+            currency = 'USD'
+            expire_time = get_utc_transactime(5 * 60)  # expire 5 mins from now
+            price = '11.22'
+            if is_dfd:
+                last_px = '0'
+                last_shares = '0'
+                order_status = fix.OrdStatus_DONE_FOR_DAY
+                exec_type = fix.ExecType_DONE_FOR_DAY
+                log_msg_type = 'Snd DFD'
+                leaves_qty = 0
+            else:
+                # TODO: fill vs partial-fill
+                last_px = price
+                last_shares = order_qty
+                order_status = fix.OrdStatus_FILLED
+                exec_type = fix.ExecType_PARTIAL_FILL
+                log_msg_type = 'Snd Fill'
+                leaves_qty = 0  # different for partial
+
+            message = string_to_message(fix.MsgType_ExecutionReport, " ".join([
+                f"6={price}",
+                f"11={clordid}",
+                f"14={order_qty}",
+                f"15={currency}",
+                f"17={order_qty}-fill",
+                f"20={fix.ExecTransType_NEW}",
+                f"29={fix.LastCapacity_AGENT}",
+                f"30={FIXApplication.LAST_MARKET}",
+                f"31={last_px}",
+                f"32={last_shares}",
+                f"37={order_id}",
+                f"38={order_qty}",
+                f"39={order_status}",
+                f"40={get_field_value(latest_message, fix.OrdType())}",
+                f"41={clordid}",
+                f"47={fix.Rule80A_AGENCY_SINGLE_ORDER}",
+                f"50={FIXApplication.UUID}",
+                f"54={get_field_value(latest_message, fix.Side())}",
+                f"55={get_field_value(latest_message, fix.Symbol())}",
+                f"59={get_field_value(latest_message, fix.TimeInForce())}",
+                f"60={get_utc_transactime()}",
+                f"76={FIXApplication.EXEC_BROKER}",
+                #                f"100={FIXApplication.EX_DESTINATION}",
+                #                f"109={order_id}",
+                f"126={expire_time}",
+                f"150={exec_type}",
+                f"151={leaves_qty}",
+            ]))
+
+            log(log_msg_type, message)
+            fix.Session.sendToTarget(message, self.session_id)
+
+            if is_dfd:
+                self.dfd_sent = True

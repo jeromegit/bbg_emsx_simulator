@@ -1,5 +1,5 @@
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Union, Any, Set
 
 import quickfix as fix
@@ -10,6 +10,11 @@ self_lock = threading.Lock()
 
 class FIXApplication(fix.Application):
     SESSION_LEVEL_TAGS: Set[str] = {str(tag) for tag in [8, 9, 10, 34, 35, 49, 52, 56]}
+
+    EXEC_BROKER = 'ITGI'
+    LAST_MARKET = 'ITGI'
+    EX_DESTINATION = 'US'
+    UUID = 1234
 
     latest_clordid_per_order_id: Dict[str, str] = {}
     latest_fix_message_per_order_id: Dict[str, Dict[str, str]] = {}
@@ -43,7 +48,7 @@ class FIXApplication(fix.Application):
         return f"{FIXApplication.base_clordid}{FIXApplication.current_clordid:06}"
 
     @staticmethod
-    def set_latest_clordid_per_order_id(order_id: str, clordid: Union[str, None]) -> str:
+    def set_latest_clordid_per_order_id(order_id: str, clordid: Union[str, None]) -> None:
         if clordid:
             FIXApplication.latest_clordid_per_order_id[order_id] = clordid
         else:
@@ -86,7 +91,11 @@ def string_to_message(message_type: int, fix_string: str, separator: str = ' ') 
 
     tag_value_pairs = fix_string.split(separator)
     for pair in tag_value_pairs:
-        tag, value = pair.split("=")
+        try:
+            tag, value = pair.split("=")
+        except Exception as e:
+            print(f"ERROR! Can't extract key/value from:{pair} with exception:{e}")
+            continue
         if tag not in FIXApplication.SESSION_LEVEL_TAGS:
             message.setField(int(tag), value)
 
@@ -139,5 +148,18 @@ def timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
-def get_utc_transactime() -> str:
-    return datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")
+def get_utc_transactime(offset_in_secs:int=0) -> str:
+    utc_time = datetime.utcnow()
+    if offset_in_secs:
+        utc_time += timedelta(seconds=offset_in_secs)
+
+    return utc_time.strftime("%Y%m%d-%H:%M:%S.%f")
+
+
+def log(msg_type: str, message: str | Dict[str, str] | fix.Message | None=None, pre_timestamp: str = '') -> None:
+    if message == None:
+        message = ''
+    elif isinstance(message, dict) or isinstance(message, fix.Message):
+        message = message_to_string(message)
+
+    print(f"{pre_timestamp}{timestamp()} {msg_type:<11}: {message}")

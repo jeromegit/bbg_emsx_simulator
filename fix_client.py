@@ -21,7 +21,8 @@ def main(config_file: str, send_reserve_order_id: str = None, send_fill_order_id
             if send_reserve_order_id:
                 application.send_reserve_request(send_reserve_order_id)
             if send_fill_order_id:
-                application.send_fill_request(send_fill_order_id)
+                application.send_fill_or_dfd(send_fill_order_id, False)
+                application.send_fill_or_dfd(send_fill_order_id, True)
     except (fix.ConfigError, Exception) as e:
         print(e)
     finally:

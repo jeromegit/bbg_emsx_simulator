@@ -18,31 +18,34 @@ class ClientApplication(fix.Application):
 
     def onLogon(self, session_id):
         self.session_id = session_id
-        print(f"CLIENT Session {session_id} logged on.")
+        print(
+            f"\n{timestamp()} CLIENT Session {session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        self.reserve_request_sent = False
         self.send_ioi_query(session_id)
 
     def onLogout(self, session_id):
-        print(f"CLIENT Session {session_id} logged out.")
+        print(f"{timestamp()} CLIENT Session {session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
     def toAdmin(self, message, session_id):
         message = message_to_dict(message)
         msg_type = get_field_value(message, fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
-            print(f"{timestamp()} Sent ADMIN message: {message_to_string(message)}")
+            print(f"{timestamp()} Sent ADMIN: {message_to_string(message)}")
 
     def fromAdmin(self, message, session_id):
         message = message_to_dict(message)
         msg_type = get_field_value(message, fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
-            print(f"{timestamp()} Rcvd ADMIN message: {message_to_string(message)}")
+            print(f"{timestamp()} Rcvd ADMIN: {message_to_string(message)}")
 
     def toApp(self, message, session_id):
         message = message_to_dict(message)
-        print(f"{timestamp()} Sent APP message: {message_to_string(message)}")
+        print(f"{timestamp()} Sent APP  : {message_to_string(message)}")
 
     def fromApp(self, message, session_id):
+        #        print("!!!!!!!!!!!!!!!!!!!!!! fromApp !!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         message = message_to_dict(message)
-        print(f"{timestamp()} Rcvd APP message: {message_to_string(message)}")
+        print(f"{timestamp()} Rcvd APP  : {message_to_string(message)}")
         self.process_message(message)
 
     def process_message(self, message: Dict[str, str]) -> None:
@@ -66,8 +69,10 @@ class ClientApplication(fix.Application):
         latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
         if latest_message:
             order_id = get_field_value(latest_message, fix.OrderID())
+            clordid = "ITGClOrdID:" + get_field_value(latest_message, fix.OrderID())
             message = string_to_message(fix.MsgType_NewOrderSingle, " ".join([
-                f"11={FIXApplication.get_next_clordid()}",
+#                f"11={FIXApplication.get_next_clordid()}",
+                f"11={clordid}",
                 f"37={order_id}",
                 f"38={get_field_value(latest_message, fix.OrderQty())}",
                 f"40={get_field_value(latest_message, fix.OrdType())}",

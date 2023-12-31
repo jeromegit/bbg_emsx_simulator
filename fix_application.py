@@ -1,6 +1,6 @@
 import threading
 from datetime import datetime
-from typing import Dict, Union, Any
+from typing import Dict, Union, Any, Set
 
 import quickfix as fix
 from quickfix import Message
@@ -9,6 +9,8 @@ self_lock = threading.Lock()
 
 
 class FIXApplication(fix.Application):
+    SESSION_LEVEL_TAGS: Set[str] = {str(tag) for tag in [8, 9, 10, 34, 35, 49, 52, 56]}
+
     latest_clordid_per_order_id: Dict[str, str] = {}
     latest_fix_message_per_order_id: Dict[str, Dict[str, str]] = {}
     base_clordid = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -79,7 +81,9 @@ def string_to_message(message_type: int, fix_string: str, separator: str = ' ') 
     tag_value_pairs = fix_string.split(separator)
     for pair in tag_value_pairs:
         tag, value = pair.split("=")
-        message.setField(int(tag), value)
+        if tag not in FIXApplication.SESSION_LEVEL_TAGS:
+            message.setField(int(tag), value)
+#            print(f"{tag}={value} -> {message_to_string(message)}")
 
     return message
 
@@ -97,7 +101,7 @@ def message_to_dict(message: Message) -> Dict[str, str]:
 
 
 def message_to_string(message: fix.Message | Dict[str, str]) -> str:
-    if isinstance(message,fix.Message):
+    if isinstance(message, fix.Message):
         string_with_ctrla = message.toString()
         string = string_with_ctrla.replace('\x01', '|')
     else:
@@ -119,6 +123,11 @@ def get_field_value(message: Dict[str, str], fix_field_obj: Any) -> str:
     field_value = message.get(fix_key_as_str, None)
 
     return field_value
+
+
+def set_field_value(message: Dict[str, str], fix_field_obj: Any, field_value: str) -> None:
+    fix_key_as_str = str(fix_field_obj.getField())
+    message[fix_key_as_str] = field_value
 
 
 def timestamp() -> str:

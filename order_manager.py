@@ -123,7 +123,6 @@ class OrderManager:
             else:
                 message_action = MessageAction.NewOrder
 
-            message = ServerApplication.create_order_message(message_action, order_row)
-            ServerApplication.send_message(message)
+            ServerApplication.create_order_message(message_action, order_row, True)
         else:
             print(f"Changes requested for uuid:{uuid} but no interest there")

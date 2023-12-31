@@ -87,16 +87,26 @@ class ServerApplication(fix.Application):
         order_id = get_field_value(message, fix.OrderID())
         # odd/even order_id heuristic to decide whether to accept or reject request
         if int(order_id[-1]) % 2 == 0:
-            # Accept but first send a 35=G with the reduced qty
+            # Before sending the accept first send a 35=G with the reduced qty
             qty_to_reserve = get_field_value(message, fix.OrderQty())
             self.send_correct_message(order_id, int(qty_to_reserve))
 
+            self.send_reserve_accept_message(order_id, message)
+
     def send_correct_message(self, order_id: str, qty_to_reserve: int = 0):
-        latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
-        if latest_message:
-            new_order_qty = int(get_field_value(latest_message, fix.OrderQty())) - qty_to_reserve
-            set_field_value(latest_message, fix.OrderQty(), str(new_order_qty))
-            ServerApplication.create_order_message(MessageAction.ChangeOrder, latest_message, True, False)
+        correct_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
+        if correct_message:
+            new_order_qty = int(get_field_value(correct_message, fix.OrderQty())) - qty_to_reserve
+            set_field_value(correct_message, fix.OrderQty(), str(new_order_qty))
+            ServerApplication.create_order_message(MessageAction.ChangeOrder, correct_message, True, False)
+
+    def send_reserve_accept_message(self, order_id: str, reserve_request_message: Dict[str, str]):
+        reserve_accept_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
+        if reserve_accept_message:
+            set_field_value(reserve_accept_message, fix.OrdStatus(), fix.OrdStatus_NEW)
+            set_field_value(reserve_accept_message, fix.ClOrdID(),
+                            get_field_value(reserve_request_message, fix.ClOrdID()))
+            ServerApplication.create_order_message(MessageAction.NewOrder, reserve_accept_message, True, False)
 
     @staticmethod
     def send_message(message: fix.Message):

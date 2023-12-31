@@ -66,9 +66,15 @@ class FIXApplication(fix.Application):
                     FIXApplication.latest_fix_message_per_order_id.pop(order_id)
 
     @staticmethod
-    def get_latest_fix_message_per_order_id(order_id: str) -> Dict[str, str] | None:
+    def get_latest_fix_message_per_order_id(order_id: str, issue_error: bool = True) -> Dict[str, str] | None:
         with self_lock:
-            return FIXApplication.latest_fix_message_per_order_id.get(order_id, None)
+            latest_message = FIXApplication.latest_fix_message_per_order_id.get(order_id, None)
+            if latest_message:
+                return latest_message
+            else:
+                if issue_error:
+                    print(f"ERROR: Can't find a FIX message for order_id:{order_id}")
+                return None
 
 
 def string_to_message(message_type: int, fix_string: str, separator: str = ' ') -> Message:
@@ -83,7 +89,6 @@ def string_to_message(message_type: int, fix_string: str, separator: str = ' ') 
         tag, value = pair.split("=")
         if tag not in FIXApplication.SESSION_LEVEL_TAGS:
             message.setField(int(tag), value)
-#            print(f"{tag}={value} -> {message_to_string(message)}")
 
     return message
 

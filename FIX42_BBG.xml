@@ -429,6 +429,7 @@
    <!--  BBG Specific -->
    <field name='OrderID' required='N' />
    <field name='ExecType' required='N' />
+   <field name='OrdStatus' required='N' />
   </message>
   <message name='NewOrderList' msgtype='E' msgcat='app'>
    <field name='ListID' required='Y' />

@@ -92,14 +92,14 @@ class ClientApplication(fix.Application):
 
             self.reserve_request_sent = True
 
-    def send_fill_or_dfd(self, order_id: str, is_dfd: bool = False):
+    def send_fill_or_dfd(self, order_id: str, fill_shares:int | None=None, is_dfd: bool = False):
         if not self.reserve_request_accepted or self.dfd_sent:
             return
 
         latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
         if latest_message:
+            order_qty = int(get_field_value(latest_message, fix.OrderQty()))
             order_id = get_field_value(latest_message, fix.OrderID())
-            order_qty = get_field_value(latest_message, fix.OrderQty())
             clordid = get_field_value(latest_message, fix.ClOrdID())
             currency = 'USD'
             expire_time = get_utc_transactime(5 * 60)  # expire 5 mins from now
@@ -112,20 +112,31 @@ class ClientApplication(fix.Application):
                 log_msg_type = 'Snd DFD'
                 leaves_qty = 0
             else:
-                # TODO: fill vs partial-fill
+                if fill_shares is None:
+                    fill_shares = order_qty
+                elif fill_shares == 0:
+                    # nothing to fill. skip this report
+                    return
+                assert order_qty >= fill_shares, f"fill_shares:{fill_shares} > order's qty:{order_qty}"
+
                 last_px = price
-                last_shares = order_qty
-                order_status = fix.OrdStatus_FILLED
-                exec_type = fix.ExecType_PARTIAL_FILL
-                log_msg_type = 'Snd Fill'
-                leaves_qty = 0  # different for partial
+                last_shares = fill_shares
+                if order_qty == fill_shares:
+                    exec_type = fix.ExecType_FILL
+                    order_status = fix.OrdStatus_FILLED
+                    log_msg_type = 'Snd Fill'
+                else:
+                    exec_type = fix.ExecType_PARTIAL_FILL
+                    order_status = fix.OrdStatus_PARTIALLY_FILLED
+                    log_msg_type = 'Snd Partial'
+                leaves_qty = int(order_qty) - fill_shares
 
             message = string_to_message(fix.MsgType_ExecutionReport, " ".join([
                 f"6={price}",
                 f"11={clordid}",
-                f"14={order_qty}",
+                f"14={fill_shares}",
                 f"15={currency}",
-                f"17={order_qty}-fill",
+                f"17={order_id}-fill",
                 f"20={fix.ExecTransType_NEW}",
                 f"29={fix.LastCapacity_AGENT}",
                 f"30={FIXApplication.LAST_MARKET}",

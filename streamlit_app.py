@@ -1,10 +1,13 @@
+from typing import List
+
 import streamlit as st
 from pandas import DataFrame
 
 from order_manager import OrderManager
+from fix_application import FIXApplication
 
 GRID_KEY = 'grid'
-
+VALID_TICKERS:List[str] = FIXApplication.KNOWN_SYMBOLS_BY_TICKER.keys()
 
 def create_data_editor(orders_df: DataFrame) -> DataFrame:
     # the columns names must match the ones in the csv file
@@ -24,8 +27,8 @@ def create_data_editor(orders_df: DataFrame) -> DataFrame:
                                    "price": st.column_config.NumberColumn(
                                        format="$ %.2f",
                                    ),
-                                   "symbol":st.column_config.TextColumn(
-                                       validate="^[A-Z.]+$"
+                                   "symbol":st.column_config.SelectboxColumn(
+                                       options=VALID_TICKERS,
                                    ),
                                },
                                hide_index=True,
@@ -78,6 +81,8 @@ def main(order_manager: OrderManager) -> None:
                 process_edited_added_rows(orders_df, edited_df)
 
         st.button('Close')
+
+    # TODO: add a button to stop server/client app, reset the state, and restart
 
 
 if __name__ == "__main__":

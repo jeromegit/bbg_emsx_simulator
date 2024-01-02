@@ -10,6 +10,19 @@ self_lock = threading.Lock()
 
 class FIXApplication(fix.Application):
     SESSION_LEVEL_TAGS: Set[str] = {str(tag) for tag in [8, 9, 10, 34, 35, 49, 52, 56]}
+    KNOWN_SYMBOLS_BY_TICKER: Dict[str, str] = {
+        "BOOM": "23291C10",
+        "CAKE": "16307210",
+        "FUN": "15018510",
+        "HEINY": "42301230",
+        "HOG": "41282210",
+        "LUV": "84474110",
+        "PLAY": "23833710",
+        "ROCK": "37468910",
+        "ZEUS": "68162K10",
+        "ZVZZT": "0ZVZZT88",
+    }
+    KNOWN_SYMBOLS_BY_CUSIP: Dict[str, str] = {v: k for k, v in KNOWN_SYMBOLS_BY_TICKER.items()}
 
     EXEC_BROKER = 'ITGI'
     LAST_MARKET = 'ITGI'
@@ -139,16 +152,20 @@ def get_field_value(message: Dict[str, str], fix_field_obj: Any) -> str:
     return field_value
 
 
-def set_field_value(message: Dict[str, str], fix_field_obj: Any, field_value: str) -> None:
+def set_field_value(message: Dict[str, str], fix_field_obj: Any, field_value: str | None) -> None:
     fix_key_as_str = str(fix_field_obj.getField())
-    message[fix_key_as_str] = field_value
+    if field_value is None:
+        if fix_key_as_str in message:
+            del message[fix_key_as_str]
+    else:
+        message[fix_key_as_str] = field_value
 
 
 def timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
-def get_utc_transactime(offset_in_secs:int=0) -> str:
+def get_utc_transactime(offset_in_secs: int = 0) -> str:
     utc_time = datetime.utcnow()
     if offset_in_secs:
         utc_time += timedelta(seconds=offset_in_secs)
@@ -156,7 +173,7 @@ def get_utc_transactime(offset_in_secs:int=0) -> str:
     return utc_time.strftime("%Y%m%d-%H:%M:%S.%f")
 
 
-def log(msg_type: str, message: str | Dict[str, str] | fix.Message | None=None, pre_timestamp: str = '') -> None:
+def log(msg_type: str, message: str | Dict[str, str] | fix.Message | None = None, pre_timestamp: str = '') -> None:
     if message == None:
         message = ''
     elif isinstance(message, dict) or isinstance(message, fix.Message):

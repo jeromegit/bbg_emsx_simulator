@@ -5,9 +5,8 @@ from typing import Set, Dict, List
 import quickfix as fix
 from pandas import Series
 
-from fix_application import message_to_string, string_to_message, FIXApplication, timestamp, \
-    get_utc_transactime, get_field_value, message_to_dict, set_field_value, log
-
+from fix_application import string_to_message, FIXApplication, get_utc_transactime, get_field_value, message_to_dict, \
+    set_field_value, log
 from order_manager import OrderManager
 
 
@@ -32,10 +31,12 @@ class ServerApplication(fix.Application):
 
     def onLogon(self, session_id):
         ServerApplication.session_id = session_id
-        log('SERVER Session', f"{session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", '\n')
+        log('SERVER Session',
+            f"{session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", '\n')
 
     def onLogout(self, session_id):
-        log('SERVER Session', f"{session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", '\n')
+        log('SERVER Session',
+            f"{session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", '\n')
 
     def toAdmin(self, message, session_id):
         message = message_to_dict(message)
@@ -73,6 +74,8 @@ class ServerApplication(fix.Application):
             self.process_ioi_message(message)
         elif msg_type == fix.MsgType_NewOrderSingle:
             self.process_reserve_request_message(message)
+        elif msg_type == fix.MsgType_ExecutionReport:
+            self.process_execution_report_message(message)
 
     def process_ioi_message(self, message: Dict[str, str]):
         uuid = get_field_value(message, fix.SenderSubID())
@@ -86,17 +89,34 @@ class ServerApplication(fix.Application):
         # odd/even order_id heuristic to decide whether to accept or reject request
         if int(order_id[-1]) % 2 == 0:
             # Before sending the accept first send a 35=G with the reduced qty
-            qty_to_reserve = get_field_value(message, fix.OrderQty())
-            self.send_correct_message(order_id, int(qty_to_reserve))
+            latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
+            if latest_message:
+                qty_to_reserve = int(get_field_value(message, fix.OrderQty()))
+                corrected_qty = int(get_field_value(latest_message, fix.OrderQty())) - qty_to_reserve
+                self.send_correct_message(order_id, corrected_qty)
 
-            self.send_reserve_accept_message(order_id, message)
+                self.send_reserve_accept_message(order_id, message)
+        else:
+            # TODO: create reject for reserve request
+            pass
 
-    def send_correct_message(self, order_id: str, qty_to_reserve: int = 0):
+    def process_execution_report_message(self, message: Dict[str, str]):
+        # For now, only do something once we get the DFD
+        if get_field_value(message, fix.OrdStatus()) == fix.OrdStatus_DONE_FOR_DAY:
+            order_id = get_field_value(message, fix.OrderID())
+            # figure out the new qty
+            cum_qty = int(get_field_value(message, fix.CumQty()))
+            order_qty = int(get_field_value(message, fix.OrderQty()))
+            new_qty = order_qty - cum_qty
+            self.send_correct_message(order_id, int(new_qty))
+            # TODO: update csv file
+
+    def send_correct_message(self, order_id: str, corrected_qty: int = 0):
         correct_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
         if correct_message:
-            new_order_qty = int(get_field_value(correct_message, fix.OrderQty())) - qty_to_reserve
-            set_field_value(correct_message, fix.OrderQty(), str(new_order_qty))
-            ServerApplication.create_order_message(MessageAction.ChangeOrder, correct_message, True, False)
+            set_field_value(correct_message, fix.OrderQty(), str(corrected_qty))
+            set_field_value(correct_message, fix.OrdStatus(), None)
+            ServerApplication.create_order_message(MessageAction.ChangeOrder, correct_message, True, True)
 
     def send_reserve_accept_message(self, order_id: str, reserve_request_message: Dict[str, str]):
         reserve_accept_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
@@ -125,11 +145,16 @@ class ServerApplication(fix.Application):
     def create_order_message(action: MessageAction, order: Series | Dict[str, str],
                              send_message: bool = False, save_message: bool = False) -> fix.Message:
         if isinstance(order, Series):
+            # Initiated from the UI
             fix_string = ServerApplication.create_fix_string_from_series(order)
             order_id = order['order_id']
             clordid = FIXApplication.get_next_clordid()
             FIXApplication.set_latest_clordid_per_order_id(order_id, clordid)
         else:
+            # Initiated by receiving a message from the client
+            order_id = get_field_value(order, fix.OrderID())
+            server_clordid = FIXApplication.get_latest_clordid_per_order_id(order_id)
+            set_field_value(order, fix.ClOrdID(), server_clordid)
             fix_string = ServerApplication.create_fix_string_from_dict(order)
             order_id = get_field_value(order, fix.OrderID())
 
@@ -151,6 +176,9 @@ class ServerApplication(fix.Application):
 
     @staticmethod
     def create_fix_string_from_series(order: Series) -> str:
+        symbol = order['symbol']
+        cusip = FIXApplication.KNOWN_SYMBOLS_BY_TICKER.get(symbol, f"??{symbol}??")
+
         side = ServerApplication.side_str_to_fix(order['side'])
         clordid = FIXApplication.get_next_clordid()
         order_id = order['order_id']
@@ -164,13 +192,15 @@ class ServerApplication(fix.Application):
             f"11={clordid}",
             f"15={currency}",
             f"21={fix.HandlInst_MANUAL_ORDER_BEST_EXECUTION}",
+            f"22={fix.IDSource_CUSIP}",
             f"37={order_id}",
             f"38={order['shares']}",
             f"44={order_price:.2f}",
             f"40={order_type}",
+            f"48={cusip}",
             f"50={order['uuid']}",
             f"54={side}",
-            f"55={order['symbol']}",
+            f"55={symbol}",
             f"59={fix.TimeInForce_DAY}",
             f"60={get_utc_transactime()}",
             f"100={FIXApplication.EX_DESTINATION}",

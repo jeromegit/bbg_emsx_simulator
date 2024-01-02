@@ -19,6 +19,8 @@ class ClientApplication(fix.Application):
         self.session_id = session_id
         log('CLIENT Session', f"{session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", '\n')
         self.reserve_request_sent = False
+        self.reserve_request_accepted = False
+        self.dfd_sent = False
         self.send_ioi_query(session_id)
 
     def onLogout(self, session_id):
@@ -63,7 +65,7 @@ class ClientApplication(fix.Application):
                                     f"23=na 28=N 55=NA 54=1 27=S 50={FIXApplication.UUID}")
         fix.Session.sendToTarget(message, session_id)
 
-    def send_reserve_request(self, order_id: str):
+    def send_reserve_request(self, order_id: str, reserve_shares:int):
         if self.reserve_request_sent:
             return
 
@@ -75,7 +77,7 @@ class ClientApplication(fix.Application):
                 #                f"11={FIXApplication.get_next_clordid()}",
                 f"11={clordid}",
                 f"37={order_id}",
-                f"38={get_field_value(latest_message, fix.OrderQty())}",
+                f"38={reserve_shares}",
                 f"40={get_field_value(latest_message, fix.OrdType())}",
                 f"50={FIXApplication.UUID}",
                 f"54={get_field_value(latest_message, fix.Side())}",

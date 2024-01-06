@@ -1,9 +1,16 @@
+from enum import Enum
 from typing import Dict
 
 import quickfix as fix
 
-from fix_application import string_to_message, message_to_string, timestamp, FIXApplication, \
+from fix_application import string_to_message, FIXApplication, \
     get_field_value, get_utc_transactime, message_to_dict, log
+
+
+class ExecutionReportType(Enum):
+    NewAck = fix.OrdStatus_NEW
+    Filled = fix.OrdStatus_FILLED
+    DFD = fix.OrdStatus_DONE_FOR_DAY
 
 
 class ClientApplication(fix.Application):
@@ -50,7 +57,7 @@ class ClientApplication(fix.Application):
         msg_type = get_field_value(message, fix.MsgType())
         order_id = get_field_value(message, fix.OrderID())
         if msg_type == fix.MsgType_NewOrderSingle:
-#                msg_type == fix.MsgType_OrderCancelReplaceRequest):
+            #                msg_type == fix.MsgType_OrderCancelReplaceRequest):
             if get_field_value(message, fix.OrdStatus()) == fix.OrdStatus_NEW:
                 self.reserve_request_accepted = True
                 log("Reserved accepted")
@@ -65,7 +72,7 @@ class ClientApplication(fix.Application):
                                     f"23=na 28=N 55=NA 54=1 27=S 50={FIXApplication.UUID}")
         fix.Session.sendToTarget(message, session_id)
 
-    def send_reserve_request(self, order_id: str, reserve_shares:int):
+    def send_reserve_request(self, order_id: str, reserve_shares: int):
         if self.reserve_request_sent:
             return
 
@@ -94,7 +101,8 @@ class ClientApplication(fix.Application):
 
             self.reserve_request_sent = True
 
-    def send_fill_or_dfd(self, order_id: str, fill_shares:int | None=None, is_dfd: bool = False):
+    def send_execution_report(self, order_id: str, fill_shares: int | None = None,
+                              execution_type: ExecutionReportType = ExecutionReportType.NewAck):
         if not self.reserve_request_accepted or self.dfd_sent:
             return
 
@@ -106,7 +114,17 @@ class ClientApplication(fix.Application):
             currency = 'USD'
             expire_time = get_utc_transactime(5 * 60)  # expire 5 mins from now
             price = '11.22'
-            if is_dfd:
+            cum_qty = fill_shares
+            if execution_type == ExecutionReportType.NewAck:
+                price = '0'
+                cum_qty = '0'
+                last_px = '0'
+                last_shares = '0'
+                order_status = fix.OrdStatus_NEW
+                exec_type = fix.ExecType_NEW
+                log_msg_type = 'Snd ACK'
+                leaves_qty = order_qty
+            elif execution_type == ExecutionReportType.DFD:
                 last_px = '0'
                 last_shares = '0'
                 order_status = fix.OrdStatus_DONE_FOR_DAY
@@ -136,7 +154,7 @@ class ClientApplication(fix.Application):
             message = string_to_message(fix.MsgType_ExecutionReport, " ".join([
                 f"6={price}",
                 f"11={clordid}",
-                f"14={fill_shares}",
+                f"14={cum_qty}",
                 f"15={currency}",
                 f"17={order_id}-fill",
                 f"20={fix.ExecTransType_NEW}",
@@ -166,5 +184,5 @@ class ClientApplication(fix.Application):
             log(log_msg_type, message)
             fix.Session.sendToTarget(message, self.session_id)
 
-            if is_dfd:
+            if execution_type == ExecutionReportType.DFD:
                 self.dfd_sent = True

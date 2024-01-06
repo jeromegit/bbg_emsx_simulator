@@ -3,7 +3,7 @@ import time
 
 import quickfix as fix
 
-from client_application import ClientApplication
+from client_application import ClientApplication, ExecutionReportType
 from settings import get_settings
 
 
@@ -13,9 +13,9 @@ def main(config_file: str, send_reserve_order_id: str = None, send_fill_order_id
     try:
         settings = get_settings(config_file)
         application = ClientApplication()
-        storeFactory = fix.FileStoreFactory(settings)
-        logFactory = fix.FileLogFactory(settings)
-        initiator = fix.SocketInitiator(application, storeFactory, settings, logFactory)
+        store_factory = fix.FileStoreFactory(settings)
+        log_factory = fix.FileLogFactory(settings)
+        initiator = fix.SocketInitiator(application, store_factory, settings, log_factory)
         initiator.start()
         print("FIX Client started.")
         while True:
@@ -23,8 +23,9 @@ def main(config_file: str, send_reserve_order_id: str = None, send_fill_order_id
             if send_reserve_order_id:
                 application.send_reserve_request(send_reserve_order_id, reserve_shares)
             if send_fill_order_id:
-                application.send_fill_or_dfd(send_fill_order_id, fill_shares, False)
-                application.send_fill_or_dfd(send_fill_order_id, fill_shares, True)
+                application.send_execution_report(send_fill_order_id, fill_shares, ExecutionReportType.NewAck)
+                application.send_execution_report(send_fill_order_id, fill_shares, ExecutionReportType.Filled)
+                application.send_execution_report(send_fill_order_id, fill_shares, ExecutionReportType.DFD)
     except (fix.ConfigError, Exception) as e:
         print(e)
     finally:

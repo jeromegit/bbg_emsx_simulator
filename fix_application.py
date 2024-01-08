@@ -1,11 +1,68 @@
 import threading
 from datetime import datetime, timedelta
-from typing import Dict, Union, Any, Set
+from typing import Dict, Union, Set, Any, Optional, List
 
 import quickfix as fix
 from quickfix import Message
 
 self_lock = threading.Lock()
+
+
+class FIXMessage():
+    def __init__(self, message: Dict[str, str] | Message | Optional['FIXMessage'] = None):
+        if message:
+            if isinstance(message, Message):
+                self.message_dict = FIXMessage.message_to_dict(message)
+            elif isinstance(message, FIXMessage):
+                self.message_dict = dict(message.message_dict)
+            else:
+                self.message_dict = dict(message)
+        else:
+            self.message_dict = dict()
+
+    def get_field_value(self, fix_field_obj: Any) -> str:
+        fix_key_as_str = str(fix_field_obj.getField())
+        field_value = self.message_dict.get(fix_key_as_str, None)
+
+        return field_value
+
+    def set_field_value(self, fix_field_obj: Any, field_value: str | None) -> Optional['FIXMessage']:
+        fix_key_as_str = str(fix_field_obj.getField())
+        if field_value is None:
+            if fix_key_as_str in self.message_dict:
+                del self.message_dict[fix_key_as_str]
+        else:
+            self.message_dict[fix_key_as_str] = field_value
+
+        return self
+
+    def to_dict(self):
+        return dict(self.message_dict)
+
+    def __str__(self):
+        return '|'.join([f"{k}={v}" for k, v in self.message_dict.items()])
+
+    @staticmethod
+    def message_to_dict(message: Message) -> Dict[str, str]:
+        message_dict: Dict[str, str] = {}
+        string_with_ctrla = message.toString()
+        kv_pairs = string_with_ctrla.split('\x01')
+        for kv_pair in kv_pairs:
+            if '=' in kv_pair:
+                key, value = kv_pair.split('=')
+                message_dict[key] = value
+
+        return message_dict
+
+    @staticmethod
+    def message_to_string(message: fix.Message | Dict[str, str]) -> str:
+        if isinstance(message, fix.Message):
+            string_with_ctrla = message.toString()
+            string = string_with_ctrla.replace('\x01', '|')
+        elif isinstance(message, dict):
+            string = '|'.join([f"{k}={v}" for k, v in message.items()])
+
+        return string
 
 
 class FIXApplication(fix.Application):
@@ -27,10 +84,10 @@ class FIXApplication(fix.Application):
     EXEC_BROKER = 'ITGI'
     LAST_MARKET = 'ITGI'
     EX_DESTINATION = 'US'
-    UUID = 1234
+    CURRENCY = 'USD'
 
     latest_clordid_per_order_id: Dict[str, str] = {}
-    latest_fix_message_per_order_id: Dict[str, Dict[str, str]] = {}
+    latest_fix_message_per_order_id: Dict[str, FIXMessage] = {}
     base_clordid = datetime.now().strftime("%Y%m%d%H%M%S")
     current_clordid = 0
 
@@ -53,7 +110,7 @@ class FIXApplication(fix.Application):
         pass
 
     def fromApp(self, message, session_id):
-        print(f"Received message:{message_to_string(message)}")
+        print(f"Received message:{FIXMessage(message)}")
 
     @staticmethod
     def get_next_clordid():
@@ -74,9 +131,11 @@ class FIXApplication(fix.Application):
         return FIXApplication.latest_clordid_per_order_id.get(order_id, None)
 
     @staticmethod
-    def set_latest_fix_message_per_order_id(order_id: str, message: Union[Dict[str, str], None]) -> None:
+    def set_latest_fix_message_per_order_id(order_id: str, message: Union[Dict[str, str], FIXMessage, None]) -> None:
         with self_lock:
             if message:
+                if isinstance(message, dict):
+                    message = FIXMessage(message)
                 FIXApplication.latest_fix_message_per_order_id[order_id] = message
             else:
                 # since message is None, remove entry if exists
@@ -84,7 +143,7 @@ class FIXApplication(fix.Application):
                     FIXApplication.latest_fix_message_per_order_id.pop(order_id)
 
     @staticmethod
-    def get_latest_fix_message_per_order_id(order_id: str, issue_error: bool = True) -> Dict[str, str] | None:
+    def get_latest_fix_message_per_order_id(order_id: str, issue_error: bool = True) -> FIXMessage | None:
         with self_lock:
             latest_message = FIXApplication.latest_fix_message_per_order_id.get(order_id, None)
             if latest_message:
@@ -95,7 +154,7 @@ class FIXApplication(fix.Application):
                 return None
 
 
-def string_to_message(message_type: int, fix_string: str, separator: str = ' ') -> Message:
+def string_to_message(message_type: int, fix_string: str, separator: str = '|') -> Message:
     message = fix.Message()
 
     header = message.getHeader()
@@ -115,26 +174,17 @@ def string_to_message(message_type: int, fix_string: str, separator: str = ' ') 
     return message
 
 
-def message_to_dict(message: Message) -> Dict[str, str]:
-    message_dict: Dict[str, str] = {}
-    string_with_ctrla = message.toString()
-    kv_pairs = string_with_ctrla.split('\x01')
-    for kv_pair in kv_pairs:
-        if '=' in kv_pair:
-            key, value = kv_pair.split('=')
-            message_dict[key] = value
+def create_fix_string_from_dict(message: Dict[str, str], separator: str = '|') -> str:
+    tag_value_pairs: List[str] = []
+    for tag, value in message.items():
+        if tag not in FIXApplication.SESSION_LEVEL_TAGS:
+            if tag == fix.TransactTime().getField():  # tag60
+                value = get_utc_transactime()
+            tag_value_pairs.append(f"{tag}={value}")
 
-    return message_dict
+    fix_string = separator.join(tag_value_pairs)
 
-
-def message_to_string(message: fix.Message | Dict[str, str]) -> str:
-    if isinstance(message, fix.Message):
-        string_with_ctrla = message.toString()
-        string = string_with_ctrla.replace('\x01', '|')
-    else:
-        string = '|'.join([f"{k}={v}" for k, v in message.items()])
-
-    return string
+    return fix_string
 
 
 def get_header_field_value(msg, fobj) -> Union[str, None]:
@@ -143,22 +193,6 @@ def get_header_field_value(msg, fobj) -> Union[str, None]:
         return fobj.getValue()
     else:
         return None
-
-
-def get_field_value(message: Dict[str, str], fix_field_obj: Any) -> str:
-    fix_key_as_str = str(fix_field_obj.getField())
-    field_value = message.get(fix_key_as_str, None)
-
-    return field_value
-
-
-def set_field_value(message: Dict[str, str], fix_field_obj: Any, field_value: str | None) -> None:
-    fix_key_as_str = str(fix_field_obj.getField())
-    if field_value is None:
-        if fix_key_as_str in message:
-            del message[fix_key_as_str]
-    else:
-        message[fix_key_as_str] = field_value
 
 
 def timestamp() -> str:
@@ -173,10 +207,11 @@ def get_utc_transactime(offset_in_secs: int = 0) -> str:
     return utc_time.strftime("%Y%m%d-%H:%M:%S.%f")
 
 
-def log(msg_type: str, message: str | Dict[str, str] | fix.Message | None = None, pre_timestamp: str = '') -> None:
+def log(msg_type: str, message: str | Dict[str, str] | fix.Message | FIXMessage | None = None,
+        pre_timestamp: str = '') -> None:
     if message == None:
         message = ''
     elif isinstance(message, dict) or isinstance(message, fix.Message):
-        message = message_to_string(message)
+        message = FIXMessage(message)
 
     print(f"{pre_timestamp}{timestamp()} {msg_type:<11}: {message}")

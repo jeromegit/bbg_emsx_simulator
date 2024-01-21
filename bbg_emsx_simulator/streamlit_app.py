@@ -2,6 +2,7 @@ from typing import List
 
 import streamlit as st
 from pandas import DataFrame
+from streamlit_autorefresh import st_autorefresh
 
 from order_manager import OrderManager
 from fix_application import FIXApplication
@@ -59,13 +60,23 @@ def process_edited_added_rows(orders_df: DataFrame, edited_df: DataFrame) -> Non
         if initial_change_count != 1:
             st.warning('No valid order left to save/send')
 
+def get_instructions_as_markdown()->str:
+    return f"""
+        1. Only the active orders with a matching UUID are sent when a client logs in
+        1. Add new row(s) or make changes to existing rows and press on the [Save/Send Changes] button
+        1. The underlying OMS data is updated after a fill but won't show until you press [Show updates]
+        1. you can't change existing order_id and UUID values
+        1. Only valid symbols: {', '.join(VALID_TICKERS)} (due to a limited ticker -> CUSIP map)
+        """
 
 def main(order_manager: OrderManager) -> None:
     st.set_page_config(layout="wide")
+#    count = st_autorefresh(interval=2000, limit=100, key="fizzbuzzcounter")
 
     orders_df = order_manager.orders_df
     st.title('OMS Order Management')
-    st.write(f"Only valid symbols: {', '.join(VALID_TICKERS)}")
+
+#    st.write(f"Count:{count}")
     edited_df = create_data_editor(orders_df)
 
     if st.button('Save/Send Changes'):
@@ -83,9 +94,16 @@ def main(order_manager: OrderManager) -> None:
 
         st.button('Close')
 
+    if st.button('Show updates'):
+        st.experimental_rerun()
+
+    st.subheader('_Instructions_')
+    st.markdown(get_instructions_as_markdown())
+
     # TODO: add a button to stop server/client app, reset the state, and restart
 
 
 if __name__ == "__main__":
     order_manager = OrderManager()
+
     main(order_manager)

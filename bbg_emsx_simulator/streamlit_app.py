@@ -65,6 +65,7 @@ def main(order_manager: OrderManager) -> None:
 
     orders_df = order_manager.orders_df
     st.title('OMS Orders Management')
+    st.write(f"Only valid symbols: {', '.join(VALID_TICKERS)}")
     edited_df = create_data_editor(orders_df)
 
     if st.button('Save/Send Changes'):

@@ -3,7 +3,7 @@ import time
 
 import quickfix as fix
 
-from client_application import ClientApplication, ExecutionReportType
+from bbg_emsx_simulator.client_application import ClientApplication, ExecutionReportType
 from settings import get_settings
 
 

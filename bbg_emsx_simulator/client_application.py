@@ -34,13 +34,13 @@ class ClientApplication(fix.Application):
 
     def toAdmin(self, message, session_id):
         message = FIXMessage(message)
-        msg_type = message.get_field_value(fix.MsgType())
+        msg_type = message.get(fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
             log('Sent ADMIN', message)
 
     def fromAdmin(self, message, session_id):
         message = FIXMessage(message)
-        msg_type = message.get_field_value(fix.MsgType())
+        msg_type = message.get(fix.MsgType())
         if msg_type != fix.MsgType_Heartbeat:
             log('Rcvd ADMIN', message)
 
@@ -53,18 +53,18 @@ class ClientApplication(fix.Application):
         self.process_message(message)
 
     def process_message(self, message: FIXMessage) -> None:
-        msg_type = message.get_field_value(fix.MsgType())
-        order_id = message.get_field_value(fix.OrderID())
+        msg_type = message.get(fix.MsgType())
+        order_id = message.get(fix.OrderID())
         if msg_type == fix.MsgType_NewOrderSingle:
             #                msg_type == fix.MsgType_OrderCancelReplaceRequest):
-            if message.get_field_value(fix.OrdStatus()) == fix.OrdStatus_NEW:
+            if message.get(fix.OrdStatus()) == fix.OrdStatus_NEW:
                 self.reserve_request_accepted = True
-                log("Reserved ACCEPTED")
+                log('Rcvd APP', 'Reserve request, ACCEPTED')
             else:
                 FIXApplication.set_latest_fix_message_per_order_id(order_id, message)
 
-        elif message.get_field_value(fix.OrdStatus()) == fix.OrdStatus_REJECTED:
-            log("Reserved REJECTED")
+        elif message.get(fix.OrdStatus()) == fix.OrdStatus_REJECTED:
+            log('Rcvd APP', 'Reserve request, REJECTED')
 
         elif msg_type == fix.MsgType_OrderCancelRequest:
             FIXApplication.set_latest_fix_message_per_order_id(order_id, None)
@@ -82,18 +82,18 @@ class ClientApplication(fix.Application):
 
         latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
         if latest_message:
-            order_id = latest_message.get_field_value(fix.OrderID())
-            clordid = "ITGClOrdID:" + latest_message.get_field_value(fix.OrderID())
+            order_id = latest_message.get(fix.OrderID())
+            clordid = "ITGClOrdID:" + latest_message.get(fix.OrderID())
             message = string_to_message(fix.MsgType_NewOrderSingle, '|'.join([
                 #                f"11={FIXApplication.get_next_clordid()}",
                 f"11={clordid}",
                 f"37={order_id}",
                 f"38={reserve_shares}",
-                f"40={latest_message.get_field_value(fix.OrdType())}",
-                f"44={latest_message.get_field_value(fix.Price())}",
+                f"40={latest_message.get(fix.OrdType())}",
+                f"44={latest_message.get(fix.Price())}",
                 f"50={ClientApplication.UUID}",
-                f"54={latest_message.get_field_value(fix.Side())}",
-                f"55={latest_message.get_field_value(fix.Symbol())}",
+                f"54={latest_message.get(fix.Side())}",
+                f"55={latest_message.get(fix.Symbol())}",
                 f"60={get_utc_transactime()}",
                 f"76={FIXApplication.EXEC_BROKER}",
                 f"100={FIXApplication.EX_DESTINATION}",
@@ -113,9 +113,9 @@ class ClientApplication(fix.Application):
 
         latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
         if latest_message:
-            order_qty = int(latest_message.get_field_value(fix.OrderQty()))
-            order_id = latest_message.get_field_value(fix.OrderID())
-            clordid = latest_message.get_field_value(fix.ClOrdID())
+            order_qty = int(latest_message.get(fix.OrderQty()))
+            order_id = latest_message.get(fix.OrderID())
+            clordid = latest_message.get(fix.ClOrdID())
             expire_time = get_utc_transactime(5 * 60)  # expire 5 mins from now
             price = '11.22'
             cum_qty = fill_shares
@@ -169,13 +169,13 @@ class ClientApplication(fix.Application):
                 f"37={order_id}",
                 f"38={order_qty}",
                 f"39={order_status}",
-                f"40={latest_message.get_field_value(fix.OrdType())}",
+                f"40={latest_message.get(fix.OrdType())}",
                 f"41={clordid}",
                 f"47={fix.Rule80A_AGENCY_SINGLE_ORDER}",
                 f"50={ClientApplication.UUID}",
-                f"54={latest_message.get_field_value(fix.Side())}",
-                f"55={latest_message.get_field_value(fix.Symbol())}",
-                f"59={latest_message.get_field_value(fix.TimeInForce())}",
+                f"54={latest_message.get(fix.Side())}",
+                f"55={latest_message.get(fix.Symbol())}",
+                f"59={latest_message.get(fix.TimeInForce())}",
                 f"60={get_utc_transactime()}",
                 f"76={FIXApplication.EXEC_BROKER}",
                 f"126={expire_time}",

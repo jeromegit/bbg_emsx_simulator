@@ -38,6 +38,21 @@ class OrderManager:
     def save_orders(self):
         self.orders_df.to_csv(OrderManager.ORDERS_FILE_PATH, index=False)
 
+    def update_order_shares(self,order_id:str, new_shares:int):
+        self.read_orders_from_file()
+        matching_row_indeces = self.orders_df.index[self.orders_df['order_id'] == order_id].tolist()
+        if len(matching_row_indeces):
+            row_index = matching_row_indeces[0]
+            current_shares =self.orders_df.loc[row_index, 'shares']
+            self.orders_df.loc[row_index, 'shares'] = new_shares
+            self.save_orders()
+            print(f"Updated order with order_id:{order_id} shares from {current_shares} to {new_shares}")
+
+            return True
+        else:
+            print(f"ERROR: can't find order with order_id:{order_id}")
+            return False
+
     def get_orders_for_uuid(self, uuid: str) -> List[Series]:
         orders: List[Series] = []
         for index, row in self.orders_df.iterrows():

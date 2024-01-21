@@ -20,13 +20,13 @@ class FIXMessage():
         else:
             self.message_dict = dict()
 
-    def get_field_value(self, fix_field_obj: Any) -> str:
+    def get(self, fix_field_obj: Any) -> str:
         fix_key_as_str = str(fix_field_obj.getField())
         field_value = self.message_dict.get(fix_key_as_str, None)
 
         return field_value
 
-    def set_field_value(self, fix_field_obj: Any, field_value: str | None) -> Optional['FIXMessage']:
+    def set(self, fix_field_obj: Any, field_value: str | None) -> Optional['FIXMessage']:
         fix_key_as_str = str(fix_field_obj.getField())
         if field_value is None:
             if fix_key_as_str in self.message_dict:

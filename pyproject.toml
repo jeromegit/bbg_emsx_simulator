@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "fix-simulator"
+name = "bbg_emsx_simulator"
 version = "0.1.0"
 description = "A FIX server and client simulator for Bloomberg IOI Network Indications of Interest & Trade Advertisement Fix Specification."
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Jerome Provensal <jeromegit@provensal.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.10"

@@ -53,15 +53,16 @@ class OrderManager:
         os.rename(OrderManager.ORDER_CHANGES_TMP_FILE_PATH, OrderManager.ORDER_CHANGES_FILE_PATH)
 
     def check_and_process_order_change_instructions(self):
-        file_mod_time = os.path.getmtime(OrderManager.ORDER_CHANGES_FILE_PATH)
-        file_mod_datetime = datetime.fromtimestamp(file_mod_time)
+        if os.path.exists(OrderManager.ORDER_CHANGES_FILE_PATH):
+            file_mod_time = os.path.getmtime(OrderManager.ORDER_CHANGES_FILE_PATH)
+            file_mod_datetime = datetime.fromtimestamp(file_mod_time)
 
-        if file_mod_datetime > self.last_order_changes_timestamp:
-            print("Detected order changes...")
-            self.last_order_changes_timestamp = file_mod_datetime
-            with open(OrderManager.ORDER_CHANGES_FILE_PATH, "r") as fp:
-                order_changes = json.load(fp)
-                self.process_order_changes(order_changes)
+            if file_mod_datetime > self.last_order_changes_timestamp:
+                print("Detected order changes...")
+                self.last_order_changes_timestamp = file_mod_datetime
+                with open(OrderManager.ORDER_CHANGES_FILE_PATH, "r") as fp:
+                    order_changes = json.load(fp)
+                    self.process_order_changes(order_changes)
 
     def process_order_changes(self, order_changes: Dict[str, Dict[str, str]]):
         # the passed changes are tightly bound with streamlit's st.session_state after changing data in the data_editor

@@ -38,12 +38,12 @@ class OrderManager:
     def save_orders(self):
         self.orders_df.to_csv(OrderManager.ORDERS_FILE_PATH, index=False)
 
-    def update_order_shares(self,order_id:str, new_shares:int):
+    def update_order_shares(self, order_id: str, new_shares: int):
         self.read_orders_from_file()
         matching_row_indeces = self.orders_df.index[self.orders_df['order_id'] == order_id].tolist()
         if len(matching_row_indeces):
             row_index = matching_row_indeces[0]
-            current_shares =self.orders_df.loc[row_index, 'shares']
+            current_shares = self.orders_df.loc[row_index, 'shares']
             self.orders_df.loc[row_index, 'shares'] = new_shares
             self.save_orders()
             print(f"Updated order with order_id:{order_id} shares from {current_shares} to {new_shares}")
@@ -66,6 +66,13 @@ class OrderManager:
             json.dump(order_changes, fp, indent=4)
 
         os.rename(OrderManager.ORDER_CHANGES_TMP_FILE_PATH, OrderManager.ORDER_CHANGES_FILE_PATH)
+
+    def get_file_timestamp(self) -> str:
+        last_modification_time = os.path.getmtime(OrderManager.ORDERS_FILE_PATH)
+        last_modification_dt = datetime.fromtimestamp(last_modification_time)
+        formatted_time = last_modification_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        return formatted_time
 
     def check_and_process_order_change_instructions(self):
         if os.path.exists(OrderManager.ORDER_CHANGES_FILE_PATH):

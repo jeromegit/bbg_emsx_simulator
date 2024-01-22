@@ -74,7 +74,9 @@ def main(order_manager: OrderManager) -> None:
 #    count = st_autorefresh(interval=2000, limit=100, key="fizzbuzzcounter")
 
     orders_df = order_manager.orders_df
+    last_update = order_manager.get_file_timestamp()
     st.title('OMS Order Management')
+    st.write(f'(Last updated {last_update})')
 
 #    st.write(f"Count:{count}")
     edited_df = create_data_editor(orders_df)

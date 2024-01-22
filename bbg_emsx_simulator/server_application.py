@@ -102,8 +102,9 @@ class ServerApplication(fix.Application):
                 self.send_reserve_reject_message(message)
 
     def process_execution_report_message(self, message: FIXMessage):
-        # For now, only do something once we get the DFD
-        if message.get(fix.OrdStatus()) == fix.OrdStatus_DONE_FOR_DAY:
+        # For now, only do something once we get the Fill or DFD
+        if (message.get(fix.OrdStatus()) == fix.OrdStatus_DONE_FOR_DAY or
+                message.get(fix.OrdStatus()) == fix.OrdStatus_FILLED):
             order_id = message.get(fix.OrderID())
             # figure out the new qty
             cum_qty = int(message.get(fix.CumQty()))
@@ -113,7 +114,6 @@ class ServerApplication(fix.Application):
                 self.send_correct_message(order_id, int(new_qty))
             else:
                 log('Rcvd APP', 'Error with order update.')
-
 
     def send_correct_message(self, order_id: str, corrected_qty: int = 0):
         correct_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)

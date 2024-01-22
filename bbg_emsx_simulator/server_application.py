@@ -92,7 +92,7 @@ class ServerApplication(fix.Application):
         if latest_message:
             qty_to_reserve = int(message.get(fix.OrderQty()))
             corrected_qty = int(latest_message.get(fix.OrderQty())) - qty_to_reserve
-            if corrected_qty > 0:
+            if corrected_qty >= 0:
                 log('Rcvd APP', 'Reserve request, ACCEPTED')
                 # Before sending the accept first send a 35=G with the reduced qty
                 self.send_correct_message(order_id, corrected_qty)

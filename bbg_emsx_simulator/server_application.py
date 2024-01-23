@@ -88,19 +88,21 @@ class ServerApplication(fix.Application):
     def process_reserve_request_message(self, message: FIXMessage):
         order_id = message.get(fix.OrderID())
         latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
-        # Reject if the size requested is smaller than what's left
         if latest_message:
+            current_qty = int(latest_message.get(fix.OrderQty()))
             qty_to_reserve = int(message.get(fix.OrderQty()))
-            corrected_qty = int(latest_message.get(fix.OrderQty())) - qty_to_reserve
+            corrected_qty = current_qty - qty_to_reserve
             symbol = message.get(fix.Symbol())
             symbol_starts_with_z = symbol.startswith('Z')
+            # Reject if the size requested is smaller than what's left
             if corrected_qty >= 0 and not symbol_starts_with_z:
                 log('Rcvd APP', 'Reserve request, ACCEPTED')
                 # Before sending the accept first send a 35=G with the reduced qty
                 self.send_correct_message(order_id, corrected_qty)
                 self.send_reserve_accept_message(message)
             else:
-                text_message = f"symbol:{symbol} starts with a Z" if symbol_starts_with_z else "not enough shares left"
+                text_message = f"symbol:{symbol} starts with a Z" if symbol_starts_with_z else \
+                    f"not enough shares left. current:{current_qty} vs reserve:{qty_to_reserve}"
                 log('Rcvd APP', f"Reserve request, REJECTED, because {text_message}")
                 self.send_reserve_reject_message(message, text_message)
 
@@ -139,7 +141,7 @@ class ServerApplication(fix.Application):
          )
         ServerApplication.create_order_message(MessageAction.NewOrder, reserve_accept_message, True, False)
 
-    def send_reserve_reject_message(self, reserve_request_message: FIXMessage, text_message:str):
+    def send_reserve_reject_message(self, reserve_request_message: FIXMessage, text_message: str):
         reserve_reject_message = FIXMessage(reserve_request_message)
         # Only (un)set the fields that aren't already set in the reserve request
         (reserve_reject_message

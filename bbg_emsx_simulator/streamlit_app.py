@@ -97,7 +97,7 @@ def main(order_manager: OrderManager) -> None:
         st.button('Close')
 
     if st.button('Show updates'):
-        st.experimental_rerun()
+        st.rerun()
 
     st.subheader('_Instructions_')
     st.markdown(get_instructions_as_markdown())

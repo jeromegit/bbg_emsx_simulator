@@ -92,14 +92,17 @@ class ServerApplication(fix.Application):
         if latest_message:
             qty_to_reserve = int(message.get(fix.OrderQty()))
             corrected_qty = int(latest_message.get(fix.OrderQty())) - qty_to_reserve
-            if corrected_qty >= 0:
+            symbol = message.get(fix.Symbol())
+            symbol_starts_with_z = symbol.startswith('Z')
+            if corrected_qty >= 0 and not symbol_starts_with_z:
                 log('Rcvd APP', 'Reserve request, ACCEPTED')
                 # Before sending the accept first send a 35=G with the reduced qty
                 self.send_correct_message(order_id, corrected_qty)
                 self.send_reserve_accept_message(message)
             else:
-                log('Rcvd APP', 'Reserve request, REJECTED')
-                self.send_reserve_reject_message(message)
+                text_message = f"symbol:{symbol} starts with a Z" if symbol_starts_with_z else "not enough shares left"
+                log('Rcvd APP', f"Reserve request, REJECTED, because {text_message}")
+                self.send_reserve_reject_message(message, text_message)
 
     def process_execution_report_message(self, message: FIXMessage):
         # For now, only do something once we get the Fill or DFD
@@ -136,7 +139,7 @@ class ServerApplication(fix.Application):
          )
         ServerApplication.create_order_message(MessageAction.NewOrder, reserve_accept_message, True, False)
 
-    def send_reserve_reject_message(self, reserve_request_message: FIXMessage):
+    def send_reserve_reject_message(self, reserve_request_message: FIXMessage, text_message:str):
         reserve_reject_message = FIXMessage(reserve_request_message)
         # Only (un)set the fields that aren't already set in the reserve request
         (reserve_reject_message
@@ -145,7 +148,7 @@ class ServerApplication(fix.Application):
          .set(fix.HandlInst(), fix.HandlInst_MANUAL_ORDER_BEST_EXECUTION)
          .set(fix.OrderQty(), "0")
          .set(fix.OrdStatus(), fix.OrdStatus_REJECTED)
-         .set(fix.Text(), "Can Not Firm Up Order: not enough shares...")
+         .set(fix.Text(), f"Can Not Firm Up Order: {text_message}")
          .set(fix.ExecBroker(), None)
          .set(fix.ClientID(), None)
          .set(fix.ExecType(), fix.ExecType_REJECTED)

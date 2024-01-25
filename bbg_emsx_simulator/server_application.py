@@ -1,6 +1,6 @@
 import queue
 from enum import Enum
-from typing import Set
+from typing import Set, Dict
 
 import quickfix as fix
 from pandas import Series
@@ -21,6 +21,7 @@ class ServerApplication(fix.Application):
     order_manager = None
     session_id = None
     uuids_of_interest: Set[str] = set()
+    oms_order_id_per_accepted_reserve_clordid: Dict[str, str] = dict()
 
     def __init__(self):
         super().__init__()
@@ -87,7 +88,7 @@ class ServerApplication(fix.Application):
 
     def process_reserve_request_message(self, message: FIXMessage):
         order_id = message.get(fix.OrderID())
-        latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
+        latest_message = FIXApplication.get_latest_fix_message_per_oms_order_id(order_id)
         if latest_message:
             current_qty = int(latest_message.get(fix.OrderQty()))
             qty_to_reserve = int(message.get(fix.OrderQty()))
@@ -110,18 +111,21 @@ class ServerApplication(fix.Application):
         # For now, only do something once we get the Fill or DFD
         if (message.get(fix.OrdStatus()) == fix.OrdStatus_DONE_FOR_DAY or
                 message.get(fix.OrdStatus()) == fix.OrdStatus_FILLED):
-            order_id = message.get(fix.OrderID())
+            client_order_id = message.get(fix.OrderID())
+            clordid = message.get(fix.ClOrdID())
+            oms_order_id = self.oms_order_id_per_accepted_reserve_clordid.get(clordid,
+                                                                              f'?unknown oms_order_id for clordid:{clordid}')
             # figure out the new qty
             cum_qty = int(message.get(fix.CumQty()))
             order_qty = int(message.get(fix.OrderQty()))
             new_qty = order_qty - cum_qty
-            if self.order_manager.update_order_shares(order_id, new_qty):
-                self.send_correct_message(order_id, int(new_qty))
+            if self.order_manager.update_order_shares(oms_order_id, new_qty):
+                self.send_correct_message(oms_order_id, int(new_qty))
             else:
                 log('Rcvd APP', 'Error with order update.')
 
     def send_correct_message(self, order_id: str, corrected_qty: int = 0):
-        correct_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
+        correct_message = FIXApplication.get_latest_fix_message_per_oms_order_id(order_id)
         if correct_message:
             correct_message.set(fix.OrderQty(), str(corrected_qty))
             correct_message.set(fix.OrdStatus(), None)
@@ -129,9 +133,13 @@ class ServerApplication(fix.Application):
 
     def send_reserve_accept_message(self, reserve_request_message: FIXMessage):
         reserve_accept_message = FIXMessage(reserve_request_message)
+        reserve_accept_clordid = FIXApplication.get_next_clordid()
+        oms_order_id = reserve_request_message.get(fix.OrderID())
+        self.oms_order_id_per_accepted_reserve_clordid[reserve_accept_clordid] = oms_order_id
+        log("!!!DEBUG!!!", f"Mapping reserve_accept_clordid:{reserve_accept_clordid} to oms_order_id:{oms_order_id}")
         # Only (un)set the fields that aren't already set in the reserve request
         (reserve_accept_message
-         .set(fix.ClOrdID(), FIXApplication.get_next_clordid())
+         .set(fix.ClOrdID(), reserve_accept_clordid)
          .set(fix.HandlInst(), fix.HandlInst_MANUAL_ORDER_BEST_EXECUTION)
          .set(fix.OrdStatus(), fix.OrdStatus_NEW)
          .set(fix.Text(), f"Firm Up Order: {reserve_request_message.get(fix.OrderID())}")
@@ -180,7 +188,7 @@ class ServerApplication(fix.Application):
             fix_string = ServerApplication.create_fix_string_from_series(message)
             order_id = message['order_id']
             clordid = FIXApplication.get_next_clordid()
-            FIXApplication.set_latest_clordid_per_order_id(order_id, clordid)
+            FIXApplication.set_latest_clordid_per_oms_order_id(order_id, clordid)
         else:
             # Initiated by receiving a message from the client
             order_id = message.get(fix.OrderID())
@@ -188,7 +196,7 @@ class ServerApplication(fix.Application):
 
         # Weirdly enough BBG doesn't use tag41 and maintains the same tag11 thru 35=D/F's
         # if action == MessageAction.ChangeOrder or action == MessageAction.CancelOrder:
-        #     latest_clordid = FIXApplication.get_latest_clordid_per_order_id(order_id)
+        #     latest_clordid = FIXApplication.get_latest_clordid_oms_per_order_id(order_id)
         #     fix_string += f" 41={latest_clordid}"
 
         message = string_to_message(action.value, fix_string)
@@ -197,7 +205,7 @@ class ServerApplication(fix.Application):
             ServerApplication.send_message(message)
 
         if save_message:
-            FIXApplication.set_latest_fix_message_per_order_id(order_id, FIXMessage.message_to_dict(message))
+            FIXApplication.set_latest_fix_message_per_oms_order_id(order_id, FIXMessage.message_to_dict(message))
 
         return message
 

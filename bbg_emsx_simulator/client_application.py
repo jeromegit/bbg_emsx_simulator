@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Dict
 
 import quickfix as fix
 
@@ -17,6 +18,7 @@ class ClientApplication(fix.Application):
     reserve_request_sent = False
     reserve_request_accepted = False
     dfd_sent = False
+    accepted_reserve_clordid_per_oms_order_id: Dict[str, str] = dict()
 
     def onCreate(self, session_id):
         pass
@@ -54,20 +56,22 @@ class ClientApplication(fix.Application):
 
     def process_message(self, message: FIXMessage) -> None:
         msg_type = message.get(fix.MsgType())
-        order_id = message.get(fix.OrderID())
+        oms_order_id = message.get(fix.OrderID())
         if msg_type == fix.MsgType_NewOrderSingle:
             #                msg_type == fix.MsgType_OrderCancelReplaceRequest):
             if message.get(fix.OrdStatus()) == fix.OrdStatus_NEW:
                 self.reserve_request_accepted = True
-                log('Rcvd APP', 'Reserve request, ACCEPTED')
+                clordid = message.get(fix.ClOrdID())
+                log('Rcvd APP', f'Reserve request, ACCEPTED (on clordid:{clordid})')
+                self.accepted_reserve_clordid_per_oms_order_id[oms_order_id] = clordid
             else:
-                FIXApplication.set_latest_fix_message_per_order_id(order_id, message)
+                FIXApplication.set_latest_fix_message_per_oms_order_id(oms_order_id, message)
 
         elif message.get(fix.OrdStatus()) == fix.OrdStatus_REJECTED:
             log('Rcvd APP', 'Reserve request, REJECTED')
 
         elif msg_type == fix.MsgType_OrderCancelRequest:
-            FIXApplication.set_latest_fix_message_per_order_id(order_id, None)
+            FIXApplication.set_latest_fix_message_per_oms_order_id(oms_order_id, None)
 
     def send_ioi_query(self, session_id):
         message = string_to_message(fix.MsgType_IOI, '|'.join([
@@ -76,18 +80,18 @@ class ClientApplication(fix.Application):
         ]))
         fix.Session.sendToTarget(message, session_id)
 
-    def send_reserve_request(self, order_id: str, reserve_shares: int):
+    def send_reserve_request(self, oms_order_id: str, reserve_shares: int):
         if self.reserve_request_sent:
             return
 
-        latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
+        latest_message = FIXApplication.get_latest_fix_message_per_oms_order_id(oms_order_id)
         if latest_message:
-            order_id = latest_message.get(fix.OrderID())
+            oms_order_id = latest_message.get(fix.OrderID())
             clordid = "ITGClOrdID:" + latest_message.get(fix.OrderID())
             message = string_to_message(fix.MsgType_NewOrderSingle, '|'.join([
                 #                f"11={FIXApplication.get_next_clordid()}",
                 f"11={clordid}",
-                f"37={order_id}",
+                f"37={oms_order_id}",
                 f"38={reserve_shares}",
                 f"40={latest_message.get(fix.OrdType())}",
                 f"44={latest_message.get(fix.Price())}",
@@ -97,7 +101,7 @@ class ClientApplication(fix.Application):
                 f"60={get_utc_transactime()}",
                 f"76={FIXApplication.EXEC_BROKER}",
                 f"100={FIXApplication.EX_DESTINATION}",
-                f"109={order_id}",
+                f"109={oms_order_id}",
                 f"150={fix.ExecType_NEW}",
             ]))
 
@@ -106,16 +110,16 @@ class ClientApplication(fix.Application):
 
             self.reserve_request_sent = True
 
-    def send_execution_report(self, order_id: str, fill_shares: int | None = None,
+    def send_execution_report(self, oms_order_id: str, fill_shares: int | None = None,
                               execution_type: ExecutionReportType = ExecutionReportType.NewAck):
         if not self.reserve_request_accepted or self.dfd_sent:
             return
 
-        latest_message = FIXApplication.get_latest_fix_message_per_order_id(order_id)
+        latest_message = FIXApplication.get_latest_fix_message_per_oms_order_id(oms_order_id)
         if latest_message:
             order_qty = int(latest_message.get(fix.OrderQty()))
-            order_id = latest_message.get(fix.OrderID())
-            clordid = latest_message.get(fix.ClOrdID())
+            oms_order_id = latest_message.get(fix.OrderID())
+            clordid = self.accepted_reserve_clordid_per_oms_order_id[oms_order_id]
             expire_time = get_utc_transactime(5 * 60)  # expire 5 mins from now
             price = '11.22'
             cum_qty = fill_shares
@@ -160,13 +164,13 @@ class ClientApplication(fix.Application):
                 f"11={clordid}",
                 f"14={cum_qty}",
                 f"15={FIXApplication.CURRENCY}",
-                f"17={order_id}-fill",
+                f"17={oms_order_id}-gate",
                 f"20={fix.ExecTransType_NEW}",
                 f"29={fix.LastCapacity_AGENT}",
                 f"30={FIXApplication.LAST_MARKET}",
                 f"31={last_px}",
                 f"32={last_shares}",
-                f"37={order_id}",
+                f"37={oms_order_id}-caprona",
                 f"38={order_qty}",
                 f"39={order_status}",
                 f"40={latest_message.get(fix.OrdType())}",

@@ -86,8 +86,8 @@ class FIXApplication(fix.Application):
     EX_DESTINATION = 'US'
     CURRENCY = 'USD'
 
-    latest_clordid_per_order_id: Dict[str, str] = {}
-    latest_fix_message_per_order_id: Dict[str, FIXMessage] = {}
+    latest_clordid_per_oms_order_id: Dict[str, str] = {}
+    latest_fix_message_per_oms_order_id: Dict[str, FIXMessage] = {}
     base_clordid = datetime.now().strftime("%Y%m%d%H%M%S")
     current_clordid = 0
 
@@ -118,39 +118,40 @@ class FIXApplication(fix.Application):
         return f"{FIXApplication.base_clordid}{FIXApplication.current_clordid:06}"
 
     @staticmethod
-    def set_latest_clordid_per_order_id(order_id: str, clordid: Union[str, None]) -> None:
+    def set_latest_clordid_per_oms_order_id(order_id: str, clordid: Union[str, None]) -> None:
         if clordid:
-            FIXApplication.latest_clordid_per_order_id[order_id] = clordid
+            FIXApplication.latest_clordid_per_oms_order_id[order_id] = clordid
         else:
             # since clordid is None, remove entry if exists
-            if order_id in FIXApplication.latest_clordid_per_order_id:
-                FIXApplication.latest_clordid_per_order_id.pop(order_id)
+            if order_id in FIXApplication.latest_clordid_per_oms_order_id:
+                FIXApplication.latest_clordid_per_oms_order_id.pop(order_id)
 
     @staticmethod
-    def get_latest_clordid_per_order_id(order_id: str) -> Union[str, None]:
-        return FIXApplication.latest_clordid_per_order_id.get(order_id, None)
+    def get_latest_clordid_per_oms_order_id(order_id: str) -> Union[str, None]:
+        return FIXApplication.latest_clordid_per_oms_order_id.get(order_id, None)
 
     @staticmethod
-    def set_latest_fix_message_per_order_id(order_id: str, message: Union[Dict[str, str], FIXMessage, None]) -> None:
+    def set_latest_fix_message_per_oms_order_id(order_id: str,
+                                                message: Union[Dict[str, str], FIXMessage, None]) -> None:
         with self_lock:
             if message:
                 if isinstance(message, dict):
                     message = FIXMessage(message)
-                FIXApplication.latest_fix_message_per_order_id[order_id] = message
+                FIXApplication.latest_fix_message_per_oms_order_id[order_id] = message
             else:
                 # since message is None, remove entry if exists
-                if order_id in FIXApplication.latest_fix_message_per_order_id:
-                    FIXApplication.latest_fix_message_per_order_id.pop(order_id)
+                if order_id in FIXApplication.latest_fix_message_per_oms_order_id:
+                    FIXApplication.latest_fix_message_per_oms_order_id.pop(order_id)
 
     @staticmethod
-    def get_latest_fix_message_per_order_id(order_id: str, issue_error: bool = True) -> FIXMessage | None:
+    def get_latest_fix_message_per_oms_order_id(oms_order_id: str, issue_error: bool = True) -> FIXMessage | None:
         with self_lock:
-            latest_message = FIXApplication.latest_fix_message_per_order_id.get(order_id, None)
+            latest_message = FIXApplication.latest_fix_message_per_oms_order_id.get(oms_order_id, None)
             if latest_message:
                 return latest_message
             else:
                 if issue_error:
-                    print(f"ERROR: Can't find a FIX message for order_id:{order_id}")
+                    print(f"ERROR: Can't find a FIX message for order_id:{oms_order_id}")
                 return None
 
 

@@ -117,10 +117,9 @@ class ServerApplication(fix.Application):
                                                                               f'?unknown oms_order_id for clordid:{clordid}')
             # figure out the new qty
             cum_qty = int(message.get(fix.CumQty()))
-            order_qty = int(message.get(fix.OrderQty()))
-            new_qty = order_qty - cum_qty
-            if self.order_manager.update_order_shares(oms_order_id, new_qty):
-                self.send_correct_message(oms_order_id, int(new_qty))
+            updated_qty = self.order_manager.update_order_shares(oms_order_id, -cum_qty)
+            if updated_qty is not None:
+                self.send_correct_message(oms_order_id, int(updated_qty))
             else:
                 log('Rcvd APP', 'Error with order update.')
 

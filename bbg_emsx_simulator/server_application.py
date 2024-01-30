@@ -111,7 +111,6 @@ class ServerApplication(fix.Application):
         # For now, only do something once we get the Fill or DFD
         if (message.get(fix.OrdStatus()) == fix.OrdStatus_DONE_FOR_DAY or
                 message.get(fix.OrdStatus()) == fix.OrdStatus_FILLED):
-            client_order_id = message.get(fix.OrderID())
             clordid = message.get(fix.ClOrdID())
             oms_order_id = self.oms_order_id_per_accepted_reserve_clordid.get(clordid,
                                                                               f'?unknown oms_order_id for clordid:{clordid}')
@@ -184,10 +183,16 @@ class ServerApplication(fix.Application):
                              send_message: bool = False, save_message: bool = False) -> fix.Message:
         if isinstance(message, Series):
             # Initiated from the UI
-            fix_string = ServerApplication.create_fix_string_from_series(message)
             order_id = message['order_id']
-            clordid = FIXApplication.get_next_clordid()
-            FIXApplication.set_latest_clordid_per_oms_order_id(order_id, clordid)
+            if action == MessageAction.NewOrder:
+                clordid = FIXApplication.get_next_clordid()
+                FIXApplication.set_latest_clordid_per_oms_order_id(order_id, clordid)
+            else:
+                clordid = FIXApplication.get_latest_clordid_per_oms_order_id(order_id)
+                if not clordid:
+                    log("!!!ERROR!!!", f"Can't find clordid for order_id:{order_id}")
+            fix_string = ServerApplication.create_fix_string_from_series(message, clordid)
+
         else:
             # Initiated by receiving a message from the client
             order_id = message.get(fix.OrderID())
@@ -209,12 +214,11 @@ class ServerApplication(fix.Application):
         return message
 
     @staticmethod
-    def create_fix_string_from_series(order: Series) -> str:
+    def create_fix_string_from_series(order: Series, clordid: str) -> str:
         symbol = order['symbol']
         cusip = FIXApplication.KNOWN_SYMBOLS_BY_TICKER.get(symbol, f"??{symbol}??")
 
         side = ServerApplication.side_str_to_fix(order['side'])
-        clordid = FIXApplication.get_next_clordid()
         order_id = order['order_id']
         order_price = float(order['price'])
         if order_price > 0.0:

@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Union
 
 import pandas as pd
+from numpy import int64
 from pandas import DataFrame, Series
 
 
@@ -150,3 +151,9 @@ class OrderManager:
             ServerApplication.create_order_message(message_action, order_row, True)
         else:
             print(f"Changes requested for uuid:{uuid} but no interest there")
+
+    @staticmethod
+    def normalize_order_df_col_types(order_df: DataFrame):
+        order_df[['order_id', 'uuid', 'shares']] = order_df[['order_id', 'uuid', 'shares']].astype(int64)
+        order_df['price'] = order_df['price'].astype(float)
+        order_df['is_active'] = order_df['is_active'].astype(bool)

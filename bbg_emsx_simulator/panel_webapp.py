@@ -121,7 +121,7 @@ refresh_button.on_click(refresh)
 
 log_title = pn.pane.Markdown("## FIX Log")
 terminal = pn.widgets.Terminal(
-    "Welcome to the Panel Terminal!\nI'm based on xterm.js\n\n",
+    "FIX server app log coming up here... (TBD)\n\n",
     options={"cursorBlink": True},
     height=300, sizing_mode='stretch_width'
 )

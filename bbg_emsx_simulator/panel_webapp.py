@@ -1,5 +1,5 @@
-from functools import partial
-from typing import List
+import time
+from typing import List, Union, Any
 
 import panel as pn
 from bokeh.models.widgets.tables import NumberFormatter, BooleanFormatter, CheckboxEditor, NumberEditor, SelectEditor, \
@@ -12,45 +12,76 @@ from order_manager import OrderManager
 
 GRID_KEY = 'grid'
 VALID_TICKERS: List[str] = list(FIXApplication.KNOWN_SYMBOLS_BY_TICKER.keys())
+VALID_SIDES: List[str] = list(OrderManager.SIDES)
 PUSH_BUTTON = 'push'
 
+# -- Init
+order_manager = OrderManager()
+order_grid_df = order_manager.create_orders_df_copy()
 
+
+# -- Callbacks
 def refresh(_):
-    df = order_manager.read_orders_from_file()
-    table.value = df
+    order_manager.read_orders_from_file()
+    set_grid_order_df(order_manager.create_orders_df_copy())
+    log_to_pane(f"Refresh: id:{id(order_grid_df)}:\n {order_grid_df}")
 
 
-def add_row(df: DataFrame, table: str, _):
-    new_row = [0, True, 0, '', 'Buy', 0, 0]
-    df.loc[len(df)] = new_row
-    OrderManager.normalize_order_df_col_types(df)
-    table.value = df
+def add_row(_):
+    global order_grid_df
+    seconds_since_midnight = time.time() % 86400
+    new_row = [seconds_since_midnight, True, 0, VALID_TICKERS[0], VALID_SIDES[0], 10000, 12.34]
+    order_grid_df.loc[len(order_grid_df)] = new_row
+    OrderManager.normalize_orders_df_col_types(order_grid_df)
+    set_grid_order_df(order_grid_df)
+    log_to_pane(f"order_grid.value. id:{id(order_grid.value)}:\n {order_grid.value}")
 
 
-def push_order_row(df: DataFrame, e: CellClickEvent):
+def log_to_pane(text: Union[str, Any]) -> None:
+    if not isinstance(text, str):
+        text = f"{text}"
+    text = f"<pre>{text}</pre>"
+
+    info_pane.object = text
+
+
+def push_order_row(e: CellClickEvent):
     if e.column == PUSH_BUTTON:
-        print("-------------------- PUSH ---------------------")
-        edited_row_number = e.row
-        edited_row = df.loc[edited_row_number]
+        grid_row_number = e.row
+        grid_row = order_grid_df.loc[grid_row_number]
         current_df = order_manager.read_orders_from_file()
-        if len(current_df) - 1 < edited_row_number:
-            print(f"New row:\n{edited_row}")
+        if len(current_df) - 1 < grid_row_number:
+            log_to_pane(f"New row (#{grid_row_number}):\n{grid_row}")
         else:
-            current_row = current_df.loc[edited_row_number]
-            print(f"Update row:\nCURRENT:\n{current_row}\nNEW\n{edited_row}")
+            row_diff = current_df.loc[grid_row_number].compare(order_grid_df.loc[grid_row_number],
+                                                                 keep_equal=False)
+            #            print(f"{row_diff}")
+            log_to_pane(row_diff)
 
 
 def update_theme(e):
-    table.theme = e.new
+    order_grid.theme = e.new
+
+
+def create_order_grid(order_grid_df):
+    order_grid = pn.widgets.Tabulator(order_grid_df, name='Table',
+                                      theme='site',
+                                      formatters=bokeh_formatters,
+                                      editors=bokeh_editors,
+                                      buttons={PUSH_BUTTON: '<i class="fa fa-right-to-bracket"></i>'})
+    order_grid.on_click(push_order_row)
+
+    return order_grid
+
+
+def set_grid_order_df(_grid_order_df: DataFrame) -> None:
+    global order_grid_df
+    order_grid_df = _grid_order_df
+    order_grid.value = order_grid_df
 
 
 # -- Main starts here
 # The panel module seems to work best when everything is defined global
-
-order_manager = OrderManager()
-
-edited_orders_df = order_manager.orders_df.copy()
-
 tabulator_formatters = {
     'float': {'type': 'progress', 'max': 10},
     'bool': {'type': 'tickCross'}
@@ -67,24 +98,28 @@ bokeh_editors = {
     'shares': IntEditor(),
     'price': NumberEditor(),
     'symbol': SelectEditor(options=VALID_TICKERS),
-    'side': SelectEditor(options=list(OrderManager.SIDES)),
+    'side': SelectEditor(options=VALID_SIDES),
 }
 
 pn.extension("tabulator",
              css_files=["https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"])
-table = pn.widgets.Tabulator(edited_orders_df, name='Table',
-                             theme='site',
-                             formatters=bokeh_formatters,
-                             editors=bokeh_editors,
-                             buttons={PUSH_BUTTON: '<i class="fa fa-right-to-bracket"></i>'})
-table.on_click(partial(push_order_row, edited_orders_df))
+pn.extension('terminal')
+
+title = pn.pane.Markdown(r"""
+# OMS Order Manager
+## Orders
+""")
+order_grid = create_order_grid(order_grid_df)
+
+info_pane = pn.pane.HTML("Info.")
 
 add_row_button = pn.widgets.Button(name='Add row', button_type='primary')
-add_row_button.on_click(partial(add_row, edited_orders_df, table))
+add_row_button.on_click(add_row)
 
 refresh_button = pn.widgets.Button(name='Refresh')
 refresh_button.on_click(refresh)
 
+log_title = pn.pane.Markdown("## FIX Log")
 terminal = pn.widgets.Terminal(
     "Welcome to the Panel Terminal!\nI'm based on xterm.js\n\n",
     options={"cursorBlink": True},
@@ -97,25 +132,10 @@ table_theme = pn.widgets.Select(name='Select',
 table_theme.param.watch(update_theme, 'value')
 
 app = pn.Column(
-    table,
-    #    table_theme,
-    add_row_button,
-    refresh_button,
+    title,
+    pn.Row(order_grid, info_pane),
+    pn.Row(add_row_button, refresh_button),
+    log_title,
     terminal,
-    #            pn.bind(add_row, add_row_button.clicks)
-    # , args=tuple([table, orders_df])),
 )
-
-#
-# 'simple'
-# 'default'
-# 'midnight'
-# 'site'
-# 'modern'
-# 'bootstrap'
-# 'bootstrap4'
-# 'materialize'
-# 'semantic-ui'
-# 'bulma'
-# Show the app
-pn.serve(app)
+app.servable()

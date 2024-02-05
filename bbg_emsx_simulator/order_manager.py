@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 from datetime import datetime
 from typing import Dict, List, Union
 
@@ -13,12 +14,12 @@ class OrderManager:
     ORDER_CHANGES_FILE_PATH = 'oms_order_changes.json'
     ORDER_CHANGES_TMP_FILE_PATH = 'oms_order_changes.json.tmp'
     COLUMN_DTYPE_PER_NAME = {
-        'order_id': 'string',
+        'order_id': 'Int64',
         'is_active': 'bool',
-        'uuid': 'Int32',
+        'uuid': 'Int64',
         'symbol': 'string',
         'side': 'category',
-        'shares': 'Int32',
+        'shares': 'Int64',
         'price': 'Float32',
     }
     SIDES = {'Buy': 1, 'Sell': 2, 'Short': 5}
@@ -31,8 +32,7 @@ class OrderManager:
     def read_orders_from_file(self) -> DataFrame:
         self.orders_df = pd.read_csv(OrderManager.ORDERS_FILE_PATH)
 
-        for name, dtype in OrderManager.COLUMN_DTYPE_PER_NAME.items():
-            self.orders_df[name] = self.orders_df[name].astype(dtype)
+        OrderManager.normalize_orders_df_col_types(self.orders_df)
 
         return self.orders_df
 
@@ -152,8 +152,13 @@ class OrderManager:
         else:
             print(f"Changes requested for uuid:{uuid} but no interest there")
 
+    def create_orders_df_copy(self) -> DataFrame:
+        orders_df_copy = pickle.loads(pickle.dumps(self.orders_df))
+
+        return orders_df_copy
+
     @staticmethod
-    def normalize_order_df_col_types(order_df: DataFrame):
-        order_df[['order_id', 'uuid', 'shares']] = order_df[['order_id', 'uuid', 'shares']].astype(int64)
-        order_df['price'] = order_df['price'].astype(float)
-        order_df['is_active'] = order_df['is_active'].astype(bool)
+    def normalize_orders_df_col_types(orders_df: DataFrame):
+        orders_df[['order_id', 'uuid', 'shares']] = orders_df[['order_id', 'uuid', 'shares']].astype(int64)
+        orders_df['price'] = orders_df['price'].astype(float)
+        orders_df['is_active'] = orders_df['is_active'].astype(bool)

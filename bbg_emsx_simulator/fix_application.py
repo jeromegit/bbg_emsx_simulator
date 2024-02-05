@@ -133,6 +133,7 @@ class FIXApplication(fix.Application):
     @staticmethod
     def set_latest_fix_message_per_oms_order_id(order_id: str,
                                                 message: Union[Dict[str, str], FIXMessage, None]) -> None:
+        order_id = str(order_id)
         with self_lock:
             if message:
                 if isinstance(message, dict):
@@ -151,7 +152,7 @@ class FIXApplication(fix.Application):
                 return latest_message
             else:
                 if issue_error:
-                    print(f"ERROR: Can't find a FIX message for order_id:{oms_order_id}")
+                    print(f"ERROR: Can't find a FIX message for order_id:{oms_order_id}. {FIXApplication.latest_fix_message_per_oms_order_id}")
                 return None
 
 

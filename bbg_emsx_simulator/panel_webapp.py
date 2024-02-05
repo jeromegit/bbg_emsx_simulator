@@ -24,18 +24,24 @@ order_grid_df = order_manager.create_orders_df_copy()
 def refresh(_):
     order_manager.read_orders_from_file()
     set_grid_order_df(order_manager.create_orders_df_copy())
-    log_to_pane(f"Refresh: id:{id(order_grid_df)}:\n {order_grid_df}")
+#    log_to_pane(f"Refresh: id:{id(order_grid_df)}:\n {order_grid_df}")
+    last_update = order_manager.get_file_timestamp()
+    log_to_pane(f"Order grid was refreshed from the file (last_update: {last_update})")
 
 
 def add_row(_):
+    # TODO: prevent new add_row until any previously added row has been pushed
     global order_grid_df
     seconds_since_midnight = time.time() % 86400
     new_row = [seconds_since_midnight, True, 0, VALID_TICKERS[0], VALID_SIDES[0], 10000, 12.34]
     order_grid_df.loc[len(order_grid_df)] = new_row
     OrderManager.normalize_orders_df_col_types(order_grid_df)
     set_grid_order_df(order_grid_df)
-    log_to_pane(f"order_grid.value. id:{id(order_grid.value)}:\n {order_grid.value}")
+#    log_to_pane(f"order_grid.value. id:{id(order_grid.value)}:\n {order_grid.value}")
 
+def delete_row(_):
+    # TODO: Allow to delete rows?
+    pass
 
 def log_to_pane(text: Union[str, Any]) -> None:
     if not isinstance(text, str):
@@ -49,14 +55,8 @@ def push_order_row(e: CellClickEvent):
     if e.column == PUSH_BUTTON:
         grid_row_number = e.row
         grid_row = order_grid_df.loc[grid_row_number]
-        current_df = order_manager.read_orders_from_file()
-        if len(current_df) - 1 < grid_row_number:
-            log_to_pane(f"New row (#{grid_row_number}):\n{grid_row}")
-        else:
-            row_diff = current_df.loc[grid_row_number].compare(order_grid_df.loc[grid_row_number],
-                                                                 keep_equal=False)
-            #            print(f"{row_diff}")
-            log_to_pane(row_diff)
+        outcome = order_manager.update_or_add_row(grid_row_number, grid_row)
+        log_to_pane(outcome)
 
 
 def update_theme(e):

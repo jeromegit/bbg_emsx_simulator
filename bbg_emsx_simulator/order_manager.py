@@ -41,6 +41,10 @@ class OrderManager:
 
     def update_order_shares(self, order_id: str, new_shares_increment: int) -> Union[int, None]:
         self.read_orders_from_file()
+        try:
+            order_id = int(order_id)
+        except Exception as _:
+            pass
         matching_row_indeces = self.orders_df.index[self.orders_df['order_id'] == order_id].tolist()
         if len(matching_row_indeces):
             row_index = matching_row_indeces[0]
@@ -119,12 +123,12 @@ class OrderManager:
         # It assumes that the changes have already been made and are already on the order file
         order_df = self.read_orders_from_file()
 
-        edited_rows = order_changes["edited_rows"]
+        edited_rows = order_changes.get("edited_rows", {})
         for index, changes in edited_rows.items():
             order_row = order_df.iloc[int(index)]
             self.process_edited_added_row(order_row, changes, True)
 
-        added_rows = order_changes["added_rows"]
+        added_rows = order_changes.get("added_rows", [])
         for added_row in added_rows:
             order_id = added_row['order_id']
             order_rows_for_order_id = order_df[order_df['order_id'] == order_id]
@@ -138,6 +142,7 @@ class OrderManager:
         # import here to avoid circular import dependencies
         from server_application import ServerApplication, MessageAction
 
+        # TODO: be smart about handling change in UUID since the order with the old UUID s/b canceled first
         uuid = order_row['uuid']
         if ServerApplication.is_uuid_of_interest(uuid):
             if is_edited:
@@ -151,6 +156,36 @@ class OrderManager:
             ServerApplication.create_order_message(message_action, order_row, True)
         else:
             print(f"Changes requested for uuid:{uuid} but no interest there")
+
+    def update_or_add_row(self, row_index: int, row: Series) -> str:
+        current_df = self.read_orders_from_file()
+        if len(current_df) - 1 < row_index:
+            # print(f"New row (#{row_index}):\n{row}")
+            self.create_edited_added_row_instructions(row.to_dict(), True)
+            self.orders_df.loc[len(self.orders_df)] = row
+            outcome = f"Row:#{row_index} (order_id:{row['order_id']}) has been added."
+        else:
+            row_diff = current_df.loc[row_index].compare(row, keep_equal=False)
+            if len(row_diff):
+                # print(f"Row change #{row_index}:\n{row_diff}")
+                self.create_edited_added_row_instructions(dict({row_index: row_diff['other'].to_dict()}), False)
+                self.orders_df.loc[row_index] = row
+                outcome = f"Row:#{row_index} (order_id:{row['order_id']}) has been modified."
+            else:
+                outcome = f"Row:#{row_index} (order_id:{row['order_id']}) hasn't changed. Nothing to do."
+        self.save_orders()
+
+        return outcome
+
+    # Replicate the way Streamlit does it (see process_order_changes() above)
+    def create_edited_added_row_instructions(self, row: Dict, is_added: bool) -> None:
+        instructions = {}
+        if is_added:
+            instructions['added_rows'] = [row]
+        else:
+            instructions['edited_rows'] = row
+
+        self.save_order_change_instructions(instructions)
 
     def create_orders_df_copy(self) -> DataFrame:
         orders_df_copy = pickle.loads(pickle.dumps(self.orders_df))

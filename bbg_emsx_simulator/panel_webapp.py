@@ -7,6 +7,7 @@ from typing import List, Union, Any
 import panel as pn
 from bokeh.models.widgets.tables import NumberFormatter, BooleanFormatter, CheckboxEditor, NumberEditor, SelectEditor, \
     IntEditor
+from colorama import Fore, Style, Back
 from pandas import DataFrame
 from panel.models.tabulator import CellClickEvent
 
@@ -71,8 +72,21 @@ def update_theme(e):
     order_grid.theme = e.new
 
 
-def xterm_highlight_str(string: str) -> str:
-    return '\x1b[1;32m' + string + '\x1b[1;37m'
+def highlight_tags_in_lines(lines: List[str]) -> List[str]:
+    hightlighted_lines: List[str] = []
+    TAG_AND_COLORS: dict[str, str] = {"35": Back.GREEN,
+                                      "37": Fore.LIGHTBLUE_EX,
+                                      "50": Fore.LIGHTMAGENTA_EX,
+                                      "55": Fore.LIGHTYELLOW_EX,
+                                      }
+    for line in lines:
+        hightlighted_line = line
+        for tag, color in TAG_AND_COLORS.items():
+            hightlighted_line = re.sub(f'\|({tag}=[^|]+)', lambda m: f"|{color}{m.group(1)}" + Style.RESET_ALL,
+                                       hightlighted_line)
+        hightlighted_lines.append(hightlighted_line)
+
+    return hightlighted_lines
 
 
 def tail_server_fix_log_in_terminal():
@@ -82,9 +96,9 @@ def tail_server_fix_log_in_terminal():
     tailed_lines = run_command(command)
     tailed_lines = [line.replace('\001', '|') for line in tailed_lines if line]
     if last_tailed_log_line != tailed_lines[-1]:
+        hightlighted_lines = highlight_tags_in_lines(tailed_lines)
         terminal.clear()
-        highlighted_35 = [re.sub('(35=.)', lambda m: xterm_highlight_str(m.group(1)), line) for line in tailed_lines]
-        terminal.write("\n".join(highlighted_35))
+        terminal.write("\n".join(hightlighted_lines))
         last_tailed_log_line = tailed_lines[-1]
 
 
@@ -102,7 +116,22 @@ def tail(filename, n=10):
 
 
 def create_order_grid(order_grid_df):
-    order_grid = pn.widgets.Tabulator(order_grid_df, name='Table',
+    bokeh_formatters = {
+        'uuid': NumberFormatter(format='0'),
+        'is_active': BooleanFormatter(),
+    }
+
+    bokeh_editors = {
+        'order_id': IntEditor(),
+        'is_active': CheckboxEditor(),
+        'uuid': IntEditor(),
+        'shares': IntEditor(),
+        'price': NumberEditor(),
+        'symbol': SelectEditor(options=VALID_TICKERS),
+        'side': SelectEditor(options=VALID_SIDES),
+    }
+
+    order_grid = pn.widgets.Tabulator(order_grid_df,
                                       theme='site',
                                       formatters=bokeh_formatters,
                                       editors=bokeh_editors,
@@ -118,27 +147,8 @@ def set_grid_order_df(_grid_order_df: DataFrame) -> None:
     order_grid.value = order_grid_df
 
 
+# NOTE: The panel module seems to work best when everything is defined global
 # -- Main starts here
-# The panel module seems to work best when everything is defined global
-tabulator_formatters = {
-    'float': {'type': 'progress', 'max': 10},
-    'bool': {'type': 'tickCross'}
-}
-bokeh_formatters = {
-    'float': NumberFormatter(format='0.00000'),
-    'bool': BooleanFormatter(),
-}
-
-bokeh_editors = {
-    'order_id': IntEditor(),
-    'is_active': CheckboxEditor(),
-    'uuid': IntEditor(),
-    'shares': IntEditor(),
-    'price': NumberEditor(),
-    'symbol': SelectEditor(options=VALID_TICKERS),
-    'side': SelectEditor(options=VALID_SIDES),
-}
-
 pn.extension("tabulator",
              css_files=["https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"])
 pn.extension('terminal')

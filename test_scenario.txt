@@ -1,0 +1,32 @@
+# Format: action_keyword key1=value1 key2=value2 ... key3=value3
+# *** KEY ***
+#   * FIX tags or
+#   * column names from the oms_orders.csv file or
+#   * aliases
+#      * uuid = (tag)50
+#      * orderid = (tag)37
+#      * qty = (tag)38
+#
+# *** ACTIONS ***
+# (mandatory keys have a trailing !)
+#  * FIX related
+#    * logon uuid!=1234
+#    * reserve uuid!=1234 orderid!=456 qty!=1000
+#    * fill uuid!=1234 orderid!=456 qty!=1000
+#    * nothing_done uuid!=1234 orderid!=456 qty!=1000
+#    * wait uuid!=1234 orderid=456 35=D
+#
+#  * oms_orders.csv file related
+#   (column names: order_id is_active uuid symbol side shares price
+#    * add_order order_id! is_active! uuid! symbol! side! shares! price!
+#    * update_order order_id! shares=10000
+#    * remove_order order_id!
+#
+#  * misc
+#    * set uuid=1234 orderid=456
+
+logon uuid=1234
+wait uuid=1234 orderid=456 35=D
+reserve uuid=1234 orderid=456 qty=1000
+#fill uuid=1234 orderid=456 qty=1000
+#nothing_done uuid=1234 orderid=456 qty=1000

@@ -36,11 +36,13 @@ def main(config_file: str, send_reserve_order_id: str = None, send_fill_order_id
 def parse_args():
     ap = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument('-r', '--send_reserve', type=str, nargs='?', help="Send reserve for this order_id")
-    ap.add_argument('-f', '--send_fill', type=str, nargs='?', help="Send fill for this order_id")
     ap.add_argument('-R', '--reserve_shares', type=int, nargs='?', default=100,
                     help="Shares to reserve when sending a reserve request")
+
+    ap.add_argument('-f', '--send_fill', type=str, nargs='?', help="Send fill for this order_id")
     ap.add_argument('-F', '--fill_shares', type=int, nargs='?',
                     help="Shares to fill when sending a fill (0=ND, None=100%)")
+
     ap.add_argument('config_file', nargs='?')
 
     return ap.parse_args()

@@ -6,17 +6,26 @@ from typing import Dict, Set, List, Tuple, Union
 class Action(Enum):
     LOGON = "logon"
     RESERVE = "reserve"
+    ACK = "ack"
+    FILL = "fill"
+    DFD = "dfd"
     WAIT = "wait"
+
     ADD_ORDER = "add_order"
     UPDATE_ORDER = "update_order"
     DELETE_ORDER = "delete_order"
+
     SET = "set"
+    END = "end"
 
 
 class ActionMandatoryKeys:
     keys_per_action: Dict[Action, Set[str]] = {
         Action.LOGON: {'50'},
-        Action.RESERVE: {'50', '37', '38'}
+        Action.RESERVE: {'50', '37', '38'},
+        Action.ACK: {'50', '37', '38'},
+        Action.FILL: {'50', '37', '38'},
+        Action.DFD: {'50', '37', '38'},
     }
 
 
@@ -45,6 +54,7 @@ class ActionLine:
     line_number: int
     label: str
     is_valid: bool
+    was_processed: bool
 
     action_keywords: Dict[str, Action] = {action.value: action for action in Action}
 
@@ -72,6 +82,16 @@ class ActionLine:
         self.label = label
         self.line_number = line_number
         self.is_valid = True
+        self.was_processed = False
+
+    def get(self, tag: str):
+        return self.key_values.get(tag, None)
+
+    def mark_as_processed(self):
+        self.was_processed = True
+
+    def has_been__processed(self) -> bool:
+        return self.was_processed
 
     def __str__(self):
         key_values_str = ", ".join(f"{key}={value}" for key, value in self.key_values.items())
@@ -117,18 +137,30 @@ class Scenario:
 
     def parse_file_line(self, file_line: str) -> Tuple[Union[str, None], Union[Dict[str, str], None], Union[str, None]]:
         # action k1=v1 k2=v2 label="some text here"
-        pattern = r'(\w+)\s+([a-zA-Z0-9_= ]+)(.*?)\s+(?:label="(.*?)")?'
-        match = re.match(pattern, file_line)
+        match = re.match(r'(.*)label="(.*)"', file_line)
+        if match:
+            file_line = match.group(1)
+            label = match.group(2)
+        else:
+            label = None
+
+        match = re.match(r'(\w+)\s*([a-zA-Z0-9_= ]*)(.*?)', file_line)
         if match:
             action_keyword = match.group(1)
             key_value_pairs = dict(re.findall(r'(\w+)=(\w+)', match.group(2)))
-            label = match.group(3)
             return action_keyword, key_value_pairs, label
         else:
             return None, None, None
 
-    def play_next(self, to_next_wait: bool = True):
-        pass
+    def get_current_action_line(self) -> Union[ActionLine, None]:
+        return self.action_lines[self.current_line]
+
+    def ready_next_action_line(self) -> bool:
+        if self.current_line < len(self.action_lines) - 1:
+            self.current_line += 1
+            return True
+        else:
+            return False
 
 
 if __name__ == "__main__":

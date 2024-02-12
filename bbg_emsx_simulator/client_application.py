@@ -1,5 +1,6 @@
+import queue
 from enum import Enum
-from typing import Dict
+from typing import Dict, Union
 
 import quickfix as fix
 
@@ -13,12 +14,16 @@ class ExecutionReportType(Enum):
 
 
 class ClientApplication(fix.Application):
-    UUID = 1234
     session_id = None
     reserve_request_sent = False
     reserve_request_accepted = False
     dfd_sent = False
     accepted_reserve_clordid_per_oms_order_id: Dict[str, str] = dict()
+
+    def __init__(self):
+        super().__init__()
+        self.from_app_queue = queue.Queue()
+        self.from_app_received_msgs = []
 
     def onCreate(self, session_id):
         pass
@@ -29,7 +34,6 @@ class ClientApplication(fix.Application):
         self.reserve_request_sent = False
         self.reserve_request_accepted = False
         self.dfd_sent = False
-        self.send_ioi_query(session_id)
 
     def onLogout(self, session_id):
         log('CLIENT Session', f"{session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
@@ -52,6 +56,7 @@ class ClientApplication(fix.Application):
     def fromApp(self, message, session_id):
         message = FIXMessage(message)
         log('Rcvd APP', message)
+        self.from_app_queue.put(message)
         self.process_message(message)
 
     def process_message(self, message: FIXMessage) -> None:
@@ -73,14 +78,23 @@ class ClientApplication(fix.Application):
         elif msg_type == fix.MsgType_OrderCancelRequest:
             FIXApplication.set_latest_fix_message_per_oms_order_id(oms_order_id, None)
 
-    def send_ioi_query(self, session_id):
+    def dequeue(self) -> Union[str, None]:
+        # if there's nothing to dequeue, the get method will throw an exception
+        try:
+            message = self.from_app_queue.get(block=False)
+            return message
+        except Exception as e:
+            #            print(f"In Dequeue. Received execption:{e}")
+            return None
+
+    def send_ioi_query(self, client_id: str):
         message = string_to_message(fix.MsgType_IOI, '|'.join([
             f"28={fix.IOITransType_NEW}",
-            f"50={ClientApplication.UUID}"
+            f"50={client_id}"
         ]))
-        fix.Session.sendToTarget(message, session_id)
+        fix.Session.sendToTarget(message, self.session_id)
 
-    def send_reserve_request(self, oms_order_id: str, reserve_shares: int):
+    def send_reserve_request(self, uuid: str, oms_order_id: str, reserve_shares: str):
         if self.reserve_request_sent:
             return
 
@@ -95,7 +109,7 @@ class ClientApplication(fix.Application):
                 f"38={reserve_shares}",
                 f"40={latest_message.get(fix.OrdType())}",
                 f"44={latest_message.get(fix.Price())}",
-                f"50={ClientApplication.UUID}",
+                f"50={uuid}",
                 f"54={latest_message.get(fix.Side())}",
                 f"55={latest_message.get(fix.Symbol())}",
                 f"60={get_utc_transactime()}",
@@ -105,12 +119,12 @@ class ClientApplication(fix.Application):
                 f"150={fix.ExecType_NEW}",
             ]))
 
-            log("Snd REQUEST", message)
+            log("Snd RESERVE", message)
             fix.Session.sendToTarget(message, self.session_id)
 
             self.reserve_request_sent = True
 
-    def send_execution_report(self, oms_order_id: str, fill_shares: int | None = None,
+    def send_execution_report(self, uuid: str, oms_order_id: str, fill_shares: str | None = None,
                               execution_type: ExecutionReportType = ExecutionReportType.NewAck):
         if not self.reserve_request_accepted or self.dfd_sent:
             return
@@ -142,7 +156,9 @@ class ClientApplication(fix.Application):
             else:
                 if fill_shares is None:
                     fill_shares = order_qty
-                elif fill_shares == 0:
+                else:
+                    fill_shares = int(fill_shares)
+                if fill_shares == 0:
                     # nothing to fill. skip this report
                     return
                 assert order_qty >= fill_shares, f"fill_shares:{fill_shares} > order's qty:{order_qty}"
@@ -176,7 +192,7 @@ class ClientApplication(fix.Application):
                 f"40={latest_message.get(fix.OrdType())}",
                 f"41={clordid}",
                 f"47={fix.Rule80A_AGENCY_SINGLE_ORDER}",
-                f"50={ClientApplication.UUID}",
+                f"50={uuid}",
                 f"54={latest_message.get(fix.Side())}",
                 f"55={latest_message.get(fix.Symbol())}",
                 f"59={latest_message.get(fix.TimeInForce())}",

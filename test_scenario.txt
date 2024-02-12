@@ -12,9 +12,10 @@
 #  * FIX related
 #    * logon uuid!=1234
 #    * reserve uuid!=1234 orderid!=456 qty!=1000
+#    * ack uuid!=1234 orderid!=456 qty!=1000
 #    * fill uuid!=1234 orderid!=456 qty!=1000
-#    * nothing_done uuid!=1234 orderid!=456 qty!=1000
-#    * wait uuid!=1234 orderid=456 35=D
+#    * dfd uuid!=1234 orderid!=456 qty!=1000
+#    * wait uuid=1234 orderid=456 35=D
 #
 #  * oms_orders.csv file related
 #   (column names: order_id is_active uuid symbol side shares price
@@ -24,9 +25,16 @@
 #
 #  * misc
 #    * set uuid=1234 orderid=456
+#    * end
 
 logon uuid=1234
-wait uuid=1234 orderid=456 35=D
+wait uuid=1234 orderid=456 35=D label="BBG sends indication"
+#
 reserve uuid=1234 orderid=456 qty=1000
-#fill uuid=1234 orderid=456 qty=1000
-#nothing_done uuid=1234 orderid=456 qty=1000
+wait uuid=1234 orderid=456 35=G      label="BBG reduced shs"
+wait uuid=1234 orderid=456 35=D 39=0 label="BBG accepted reserve request"
+ack uuid=1234 orderid=456 qty=1000
+#
+fill uuid=1234 orderid=456 qty=100
+dfd uuid=1234 orderid=456 qty=1000
+end

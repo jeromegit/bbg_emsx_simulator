@@ -20,7 +20,7 @@ class FIXMessage():
         else:
             self.message_dict = dict()
 
-    def get(self, fix_field_obj: Any) -> str:
+    def get(self, fix_field_obj: Any) -> Union[str, None]:
         fix_key_as_str = str(fix_field_obj.getField())
         field_value = self.message_dict.get(fix_key_as_str, None)
 
@@ -92,6 +92,7 @@ class FIXApplication(fix.Application):
     current_clordid = 0
 
     def onCreate(self, session_id):
+        # method mandated by parent class
         pass
 
     def onLogon(self, session_id):
@@ -101,12 +102,15 @@ class FIXApplication(fix.Application):
         print(f"Session {session_id} logged out.")
 
     def toAdmin(self, message, session_id):
+        # method mandated by parent class
         pass
 
     def fromAdmin(self, message, session_id):
+        # method mandated by parent class
         pass
 
     def toApp(self, message, session_id):
+        # method mandated by parent class
         pass
 
     def fromApp(self, message, session_id):

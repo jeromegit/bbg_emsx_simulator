@@ -2,7 +2,7 @@ import json
 import os
 import pickle
 from datetime import datetime
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Tuple
 
 import pandas as pd
 from numpy import int64
@@ -32,22 +32,30 @@ class OrderManager:
     def read_orders_from_file(self) -> DataFrame:
         self.orders_df = pd.read_csv(OrderManager.ORDERS_FILE_PATH)
 
-        OrderManager.normalize_orders_df_col_types(self.orders_df)
+        OrderManager.normalize_orders_col_types(self.orders_df)
 
         return self.orders_df
 
     def save_orders(self):
         self.orders_df.to_csv(OrderManager.ORDERS_FILE_PATH, index=False)
 
-    def update_order_shares(self, order_id: str, new_shares_increment: int) -> Union[int, None]:
+    def get_row_index_for_order_id(self, order_id: str) -> Union[int,None]:
         self.read_orders_from_file()
         try:
             order_id = int(order_id)
         except Exception as _:
             pass
         matching_row_indeces = self.orders_df.index[self.orders_df['order_id'] == order_id].tolist()
-        if len(matching_row_indeces):
+        if len(matching_row_indeces) == 1:
             row_index = matching_row_indeces[0]
+            return row_index
+        else:
+            print(f"ERROR: can't find order with order_id:{order_id}")
+            return None
+
+    def update_order_shares(self, order_id: str, new_shares_increment: int) -> Union[int, None]:
+        row_index = self.get_row_index_for_order_id(order_id)
+        if row_index is not None:
             current_shares = self.orders_df.loc[row_index, 'shares']
             self.orders_df.loc[row_index, 'shares'] += new_shares_increment
             updated_shares = self.orders_df.loc[row_index, 'shares']
@@ -56,7 +64,15 @@ class OrderManager:
 
             return updated_shares
         else:
-            print(f"ERROR: can't find order with order_id:{order_id}")
+            return None
+
+    def get_order_shares(self, order_id: str) -> Union[int, None]:
+        row_index = self.get_row_index_for_order_id(order_id)
+        if row_index is not None:
+            current_shares = self.orders_df.loc[row_index, 'shares']
+
+            return current_shares
+        else:
             return None
 
     def get_orders_for_uuid(self, uuid: str) -> List[Series]:
@@ -157,25 +173,48 @@ class OrderManager:
         else:
             print(f"Changes requested for uuid:{uuid} but no interest there")
 
-    def update_or_add_row(self, row_index: int, row: Series) -> str:
-        current_df = self.read_orders_from_file()
-        if len(current_df) - 1 < row_index:
-            # print(f"New row (#{row_index}):\n{row}")
-            self.create_edited_added_row_instructions(row.to_dict(), True)
-            self.orders_df.loc[len(self.orders_df)] = row
-            outcome = f"Row:#{row_index} (order_id:{row['order_id']}) has been added."
+    def is_existing_order(self, saved_df: DataFrame, order_id: str) -> Tuple[bool, Union[int, None]]:
+        matching_row_indeces = saved_df.index[saved_df['order_id'] == int(order_id)].tolist()
+        if len(matching_row_indeces):
+            return True, matching_row_indeces[0]
         else:
-            row_diff = current_df.loc[row_index].compare(row, keep_equal=False)
+            return False, None
+
+    def update_or_add_row(self, row_index: int, row: Series, should_populate_missing_values: bool = False) -> str:
+        saved_df = self.read_orders_from_file()
+        order_id = row['order_id']
+        order_already_exits, found_row_index = self.is_existing_order(saved_df, order_id)
+        if order_already_exits:
+            row_index = found_row_index
+            saved_df_row = saved_df.loc[row_index]
+            if should_populate_missing_values:
+                row = self.populate_missing_values(saved_df_row, row)
+            row_diff = saved_df_row.compare(row, keep_equal=False)
             if len(row_diff):
                 # print(f"Row change #{row_index}:\n{row_diff}")
                 self.create_edited_added_row_instructions(dict({row_index: row_diff['other'].to_dict()}), False)
                 self.orders_df.loc[row_index] = row
-                outcome = f"Row:#{row_index} (order_id:{row['order_id']}) has been modified."
+                outcome = f"Row:#{row_index} (order_id:{order_id}) has been modified."
             else:
-                outcome = f"Row:#{row_index} (order_id:{row['order_id']}) hasn't changed. Nothing to do."
+                outcome = f"Row:#{row_index} (order_id:{order_id}) hasn't changed. Nothing to do."
+        else:
+            # print(f"New row (#{row_index}):\n{row}")
+            self.create_edited_added_row_instructions(row.to_dict(), True)
+            self.orders_df.loc[len(self.orders_df)] = row
+            outcome = f"Row:#{row_index} (order_id:{order_id}) has been added."
+
         self.save_orders()
 
         return outcome
+
+    def populate_missing_values(self, master_row: Series, row_with_missing_values: Series) -> Series:
+        row = master_row.copy()
+        for k, v in master_row.items():
+            if k in row_with_missing_values:
+                row[k] = row_with_missing_values[k]
+
+        OrderManager.normalize_orders_col_types(row)
+        return row
 
     # Replicate the way Streamlit does it (see process_order_changes() above)
     def create_edited_added_row_instructions(self, row: Dict, is_added: bool) -> None:
@@ -193,7 +232,7 @@ class OrderManager:
         return orders_df_copy
 
     @staticmethod
-    def normalize_orders_df_col_types(orders_df: DataFrame):
-        orders_df[['order_id', 'uuid', 'shares']] = orders_df[['order_id', 'uuid', 'shares']].astype(int64)
-        orders_df['price'] = orders_df['price'].astype(float)
-        orders_df['is_active'] = orders_df['is_active'].astype(bool)
+    def normalize_orders_col_types(orders: Union[DataFrame, Series]):
+        orders[['order_id', 'uuid', 'shares']] = orders[['order_id', 'uuid', 'shares']].astype(int64)
+        orders['price'] = orders['price'].astype(float)
+        orders['is_active'] = orders['is_active'].astype(bool)

@@ -29,6 +29,7 @@ class ServerApplication(fix.Application):
         self.from_app_queue = queue.Queue()
 
     def onCreate(self, session_id):
+        # method mandated by parent class
         pass
 
     def onLogon(self, session_id):
@@ -88,9 +89,8 @@ class ServerApplication(fix.Application):
 
     def process_reserve_request_message(self, message: FIXMessage):
         order_id = message.get(fix.OrderID())
-        latest_message = FIXApplication.get_latest_fix_message_per_oms_order_id(order_id)
-        if latest_message:
-            current_qty = int(latest_message.get(fix.OrderQty()))
+        current_qty = self.order_manager.get_order_shares(order_id)
+        if current_qty is not None:
             qty_to_reserve = int(message.get(fix.OrderQty()))
             corrected_qty = current_qty - qty_to_reserve
             symbol = message.get(fix.Symbol())
@@ -106,6 +106,8 @@ class ServerApplication(fix.Application):
                     f"not enough shares left. current:{current_qty} vs reserve:{qty_to_reserve}"
                 log('Rcvd APP', f"Reserve request, REJECTED, because {text_message}")
                 self.send_reserve_reject_message(message, text_message)
+        else:
+            log("ERROR!!!", f"Can't find qty for order_id:{order_id}")
 
     def process_execution_report_message(self, message: FIXMessage):
         # For now, only do something once we get the Fill or DFD

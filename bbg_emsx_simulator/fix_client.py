@@ -2,10 +2,12 @@ import argparse
 import time
 from typing import List, Dict
 
+import pandas as pd
 import quickfix as fix
 
 from bbg_emsx_simulator.client_application import ClientApplication, ExecutionReportType
 from bbg_emsx_simulator.fix_application import FIXMessage, log
+from bbg_emsx_simulator.order_manager import OrderManager
 from bbg_emsx_simulator.scenario import Scenario, ActionLine, Action
 from settings import get_settings
 
@@ -30,17 +32,15 @@ def main(config_file: str, scenario: Scenario) -> None:
         print("FIX Client started.")
         while True:
             time.sleep(1)
-            dequeue_all_and_store(application)
-            if scenario:
-                run_scenario(scenario, application)
-
-            # if send_reserve_order_id:
-            #
-            # if send_fill_order_id:
-
+            if application.is_logged_on():
+                dequeue_all_and_store(application)
+                if scenario:
+                    run_scenario(scenario, application)
+            else:
+                log("INFO", "Session has NOT logged on yet...")
 
     except (fix.ConfigError, Exception) as e:
-        print(f"CAUGHT EXCEPTION:{e}")
+        print(f"\nCAUGHT EXCEPTION:{e}\n")
     finally:
         if initiator:
             initiator.stop()
@@ -59,12 +59,15 @@ def dequeue_all_and_store(application: ClientApplication):
 def has_message_been_received(message_kvs: Dict[str, str]) -> bool:
     for message in list(received_app_messages):
         if message_kvs.items() <= message.message_dict.items():
-            log("FOUND", message_kvs)
+            log("FOUND", pretty_kvs(message_kvs))
             received_app_messages.remove(message)
             return True
 
-    log("NOT FOUND", f"searched:{message_kvs} in {len(received_app_messages)} received messages(s)")
+    log("NOT FOUND!!", f"searched:{pretty_kvs(message_kvs)} in {len(received_app_messages)} received messages(s)")
     return False
+
+def pretty_kvs(kvs:Dict[str, str])->str:
+    return ' | '.join([f"{k}={v}" for k, v in kvs.items()])
 
 
 def run_scenario(scenario: Scenario, application: ClientApplication):
@@ -81,6 +84,10 @@ def run_scenario(scenario: Scenario, application: ClientApplication):
 
 
 def process_action_line(application: ClientApplication, action_line: ActionLine) -> bool:
+    action = action_line.action
+    if action == Action.CONTINUE and action_line.has_been__processed():
+        return False
+
     log("ACTION PRC", f"Process action_line:{action_line}")
 
     # commonly used below
@@ -88,24 +95,34 @@ def process_action_line(application: ClientApplication, action_line: ActionLine)
     order_id = action_line.get(FIX_ORDERID_TAG37)
     order_qty = action_line.get(FIX_ORDERQTY_TAG38)
 
-    if action_line.action == Action.LOGON:
+    if action == Action.REQUEST_IOI:
         application.send_ioi_query(client_id)
-    elif action_line.action == Action.WAIT:
+    elif action == Action.WAIT:
         return has_message_been_received(action_line.key_values)
-    elif action_line.action == Action.RESERVE:
+    elif action == Action.RESERVE:
         application.send_reserve_request(client_id, order_id, order_qty)
-    elif action_line.action == Action.ACK:
+    elif action == Action.ACK:
         application.send_execution_report(client_id, order_id, order_qty, ExecutionReportType.NewAck)
-    elif action_line.action == Action.FILL:
+    elif action == Action.FILL:
         application.send_execution_report(client_id, order_id, order_qty, ExecutionReportType.Filled)
-    elif action_line.action == Action.DFD:
+    elif action == Action.DFD:
         application.send_execution_report(client_id, order_id, order_qty, ExecutionReportType.DFD)
-    elif action_line.action == Action.END:
+    elif action == Action.CONTINUE:
+        log("ACTION", "Continue until killed")
+    elif action == Action.END:
         log("ACTION", "End of scenario has been requested")
         exit(0)
 
+    # OMS Order actions
+    elif action == Action.UPDATE_ORDER:
+        row = pd.Series(action_line.key_values)
+        order_manager.update_or_add_row(-1, row, True)
+        sleep_secs = 2
+        log('SLEEP!', f"Sleep for {sleep_secs} sec(s)")
+        time.sleep(sleep_secs)
+
     else:
-        log("ERROR", f"action:{action_line.action} is not supported in action_line:{action_line}")
+        log("ERROR", f"action:{action} is not supported in action_line:{action_line}")
         return False
 
     action_line.mark_as_processed()
@@ -124,6 +141,7 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    order_manager = OrderManager()
     cli_args = parse_args()
     if cli_args.scenario_file:
         scenario = Scenario(cli_args.scenario_file)

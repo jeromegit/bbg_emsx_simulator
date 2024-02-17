@@ -10,7 +10,7 @@
 # *** ACTIONS ***
 # (mandatory keys have a trailing !)
 #  * FIX related
-#    * logon uuid!=1234
+#    * request_ioi uuid!=1234
 #    * reserve uuid!=1234 orderid!=456 qty!=1000
 #    * ack uuid!=1234 orderid!=456 qty!=1000
 #    * fill uuid!=1234 orderid!=456 qty!=1000
@@ -18,23 +18,33 @@
 #    * wait uuid=1234 orderid=456 35=D
 #
 #  * oms_orders.csv file related
-#   (column names: order_id is_active uuid symbol side shares price
+#   (column names: order_id is_active uuid symbol side shares price)
 #    * add_order order_id! is_active! uuid! symbol! side! shares! price!
 #    * update_order order_id! shares=10000
 #    * remove_order order_id!
 #
 #  * misc
 #    * set uuid=1234 orderid=456
-#    * end
+#    * end (end the session and the terminate the app)
+#    * continue (continue forever until the app is killed)
 
-logon uuid=1234
-wait uuid=1234 orderid=456 35=D label="BBG sends indication"
+# Example of a real scenario
+update_order order_id=456 shares=1000      label="starts with small qty"
+request_ioi uuid=1234
+wait uuid=1234 orderid=456 35=D qty=1000   label="BBG sends indication"
 #
-reserve uuid=1234 orderid=456 qty=1000
-wait uuid=1234 orderid=456 35=G      label="BBG reduced shs"
-wait uuid=1234 orderid=456 35=D 39=0 label="BBG accepted reserve request"
+reserve uuid=1234 orderid=456 qty=1000     label="Request the full (small) qty"
+wait uuid=1234 orderid=456 35=G qty=0      label="BBG reduced shs"
+wait uuid=1234 orderid=456 35=D 39=0       label="BBG accepted reserve request"
 ack uuid=1234 orderid=456 qty=1000
 #
+update_order order_id=456 shares=10000     label="Update to larger qty"
+wait uuid=1234 orderid=456 35=G qty=10000  label="BBG updates shs"
+
+reserve uuid=1234 orderid=456 qty=10000        label="Reserve for larger qty"
+wait uuid=1234 orderid=456 35=G qty=0          label="BBG reduced shs"
+wait uuid=1234 orderid=456 35=D 39=0 qty=10000 label="BBG accepted reserve request"#
 fill uuid=1234 orderid=456 qty=100
 dfd uuid=1234 orderid=456 qty=1000
-end
+wait uuid=1234 orderid=456 35=G qty=9000       label="BBG sent reduced shs"
+continue

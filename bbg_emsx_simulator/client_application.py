@@ -26,17 +26,19 @@ class ClientApplication(fix.Application):
         self.from_app_received_msgs = []
 
     def onCreate(self, session_id):
+        # method mandated by parent class
         pass
 
     def onLogon(self, session_id):
         self.session_id = session_id
-        log('CLIENT Session', f"{session_id} logged on.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", '\n')
+        log('CLIENT Session', f"{session_id} logged ON.<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", '\n')
         self.reserve_request_sent = False
         self.reserve_request_accepted = False
         self.dfd_sent = False
 
     def onLogout(self, session_id):
-        log('CLIENT Session', f"{session_id} logged out.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        log('CLIENT Session', f"{session_id} logged OUT.>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        self.session_id = None
 
     def toAdmin(self, message, session_id):
         message = FIXMessage(message)
@@ -87,6 +89,9 @@ class ClientApplication(fix.Application):
             #            print(f"In Dequeue. Received execption:{e}")
             return None
 
+    def is_logged_on(self):
+        return self.session_id is not None
+
     def send_ioi_query(self, client_id: str):
         message = string_to_message(fix.MsgType_IOI, '|'.join([
             f"28={fix.IOITransType_NEW}",
@@ -95,9 +100,6 @@ class ClientApplication(fix.Application):
         fix.Session.sendToTarget(message, self.session_id)
 
     def send_reserve_request(self, uuid: str, oms_order_id: str, reserve_shares: str):
-        if self.reserve_request_sent:
-            return
-
         latest_message = FIXApplication.get_latest_fix_message_per_oms_order_id(oms_order_id)
         if latest_message:
             oms_order_id = latest_message.get(fix.OrderID())

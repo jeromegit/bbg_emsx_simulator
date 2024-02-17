@@ -4,7 +4,7 @@ from typing import Dict, Set, List, Tuple, Union
 
 
 class Action(Enum):
-    LOGON = "logon"
+    REQUEST_IOI = "request_ioi"
     RESERVE = "reserve"
     ACK = "ack"
     FILL = "fill"
@@ -17,15 +17,17 @@ class Action(Enum):
 
     SET = "set"
     END = "end"
+    CONTINUE = "continue"
 
 
 class ActionMandatoryKeys:
     keys_per_action: Dict[Action, Set[str]] = {
-        Action.LOGON: {'50'},
+        Action.REQUEST_IOI: {'50'},
         Action.RESERVE: {'50', '37', '38'},
         Action.ACK: {'50', '37', '38'},
         Action.FILL: {'50', '37', '38'},
         Action.DFD: {'50', '37', '38'},
+        Action.UPDATE_ORDER: {'order_id'}
     }
 
 
@@ -144,7 +146,7 @@ class Scenario:
         else:
             label = None
 
-        match = re.match(r'(\w+)\s*([a-zA-Z0-9_= ]*)(.*?)', file_line)
+        match = re.match(r'(\w+)\s*([a-zA-Z0-9_= ]*)', file_line)
         if match:
             action_keyword = match.group(1)
             key_value_pairs = dict(re.findall(r'(\w+)=(\w+)', match.group(2)))

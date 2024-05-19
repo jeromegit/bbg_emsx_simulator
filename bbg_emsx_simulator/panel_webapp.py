@@ -2,12 +2,12 @@ import re
 import subprocess
 import time
 from collections import deque
+from pathlib import Path
 from typing import List, Union, Any
 
 import panel as pn
 from bokeh.models.widgets.tables import NumberFormatter, BooleanFormatter, CheckboxEditor, NumberEditor, SelectEditor, \
     IntEditor
-from colorama import Fore, Style, Back
 from pandas import DataFrame
 from panel.models.tabulator import CellClickEvent
 
@@ -18,12 +18,12 @@ FIX_SERVER_LOG_FILE_PATH = 'log/FIX.4.2-FIXSERVER-FIXCLIENT.messages.current.log
 VALID_TICKERS: List[str] = list(FIXApplication.KNOWN_SYMBOLS_BY_TICKER.keys())
 VALID_SIDES: List[str] = list(OrderManager.SIDES)
 PUSH_BUTTON = 'push'
-TAIL_LINE_COUNT = 10
 
 # -- Init
 order_manager = OrderManager()
 order_grid_df = order_manager.create_orders_df_copy()
 last_tailed_log_line = ''
+fix_server_log_file_path = Path(FIX_SERVER_LOG_FILE_PATH)
 
 
 # -- Callbacks
@@ -72,34 +72,56 @@ def update_theme(e):
     order_grid.theme = e.new
 
 
-def highlight_tags_in_lines(lines: List[str]) -> List[str]:
+def html_panel_css() -> str:
+    html_panel_css = """<style>
+    .color_35 {background-color: green}
+    .color_37 {color: cyan}
+    .color_50 {color: orange}
+    .color_55 {color: yellow}
+
+    div {
+      white-space: pre;
+      overflow-x: auto;
+    }
+    </style>"""
+
+    return html_panel_css
+
+def highlight_tags_in_html_lines(lines: List[str]) -> List[str]:
     hightlighted_lines: List[str] = []
-    TAG_AND_COLORS: dict[str, str] = {"35": Back.GREEN,
-                                      "37": Fore.LIGHTBLUE_EX,
-                                      "50": Fore.LIGHTMAGENTA_EX,
-                                      "55": Fore.LIGHTYELLOW_EX,
-                                      }
+    TAGS_TO_COLOR: set[int] = {35, 37, 50, 55}
     for line in lines:
         hightlighted_line = line
-        for tag, color in TAG_AND_COLORS.items():
-            hightlighted_line = re.sub(f'\|({tag}=[^|]+)', lambda m: f"|{color}{m.group(1)}" + Style.RESET_ALL,
+        for tag in TAGS_TO_COLOR:
+            tag_span = f'<span class="color_{tag}">'
+            hightlighted_line = re.sub(f'\|({tag}=[^|]+)', lambda m: f"|{tag_span}{m.group(1)}</span>",
                                        hightlighted_line)
-        hightlighted_lines.append(hightlighted_line)
+        hightlighted_lines.append(hightlighted_line + "\n")
 
     return hightlighted_lines
 
 
-def tail_server_fix_log_in_terminal():
-    global last_tailed_log_line
-    # TODO. Need a more efficient way to do this. Remember the last file position and reread from it?
-    command = f"grep -v '35=0' {FIX_SERVER_LOG_FILE_PATH} | tail -{TAIL_LINE_COUNT}"
-    tailed_lines = run_command(command)
-    tailed_lines = [line.replace('\001', '|') for line in tailed_lines if line]
-    if last_tailed_log_line != tailed_lines[-1]:
-        hightlighted_lines = highlight_tags_in_lines(tailed_lines)
-        terminal.clear()
-        terminal.write("\n".join(hightlighted_lines))
-        last_tailed_log_line = tailed_lines[-1]
+def tail_server_fix_log_in_html_pane():
+    global last_tailed_log_line, last_modified, last_log_line_count, current_modified
+
+    log_line_count = log_line_count_slider.value
+    load_lines = last_log_line_count is None or (last_log_line_count != log_line_count)
+    if not load_lines:
+        current_modified = fix_server_log_file_path.stat().st_mtime
+        load_lines = current_modified != last_modified
+
+    if load_lines:
+        last_modified = current_modified
+        last_log_line_count = log_line_count
+
+        # TODO. Need a more efficient way to do this. Remember the last file position and reread from it?
+        command = f"grep -v '35=0' {FIX_SERVER_LOG_FILE_PATH} | tail -{log_line_count}"
+        tailed_lines = run_command(command)
+
+        tailed_lines = [line.replace('\001', '|') for line in tailed_lines if line]
+        hightlighted_lines = "".join(highlight_tags_in_html_lines(tailed_lines))
+        html = f"""{html_panel_css()}<div>{hightlighted_lines}</div>"""
+        html_pane.object = html
 
 
 def run_command(command):
@@ -151,7 +173,6 @@ def set_grid_order_df(_grid_order_df: DataFrame) -> None:
 # -- Main starts here
 pn.extension("tabulator",
              css_files=["https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"])
-pn.extension('terminal')
 
 title = pn.pane.Markdown(r"""
 # OMS Order Manager
@@ -167,14 +188,20 @@ add_row_button.on_click(add_row)
 refresh_button = pn.widgets.Button(name='Refresh')
 refresh_button.on_click(refresh)
 
-log_title = pn.pane.Markdown(f"## Server FIX Log (last {TAIL_LINE_COUNT} lines)")
-terminal = pn.widgets.Terminal(
-    "FIX server app log coming up here... (TBD)\n\n",
-    options={"fontSize": 12},
-    height=500, sizing_mode='stretch_width'
-)
+log_title = pn.pane.Markdown("## Server FIX Log ")
 
-pn.state.add_periodic_callback(tail_server_fix_log_in_terminal, period=1_000)
+log_line_count_slider = pn.widgets.IntSlider(name='Last log line count', start=10, end=100, step=10, value=30)
+
+html_pane_styles = {
+    'background-color': 'black', 'color': 'white', 'font-size': '11px', 'font-family': 'monospace',
+    'border': '2px solid black',
+    'border-radius': '5px', 'padding': '10px'
+}
+html_pane = pn.pane.HTML("""(waiting for log...)""", styles=html_pane_styles)
+
+# Init global vars used in the call back
+last_tailed_log_line, last_modified, last_log_line_count, current_modified = '',  0, 0, 0
+pn.state.add_periodic_callback(tail_server_fix_log_in_html_pane, period=1_000)
 
 table_theme = pn.widgets.Select(name='Select',
                                 options=['simple', 'default', 'midnight', 'site', 'modern', 'bootstrap',
@@ -186,6 +213,7 @@ app = pn.Column(
     pn.Row(order_grid, info_pane),
     pn.Row(add_row_button, refresh_button),
     log_title,
-    terminal,
+    log_line_count_slider,
+    html_pane,
 )
 app.servable()

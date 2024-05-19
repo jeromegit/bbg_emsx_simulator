@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bbg_emsx_simulator"
-version = "0.2.1"
+version = "0.2.2"
 description = "A FIX server and client simulator for Bloomberg IOI Network Indications of Interest & Trade Advertisement Fix Specification."
 authors = ["Jerome Provensal <jeromegit@provensal.com>"]
 
@@ -12,6 +12,7 @@ streamlit = "^1.29.0"
 streamlit-autorefresh = "^1.0.1"
 panel = "^1.3.8"
 colorama = "^0.4.6"
+great-tables = "^0.3.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.2"

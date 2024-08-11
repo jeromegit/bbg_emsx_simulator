@@ -86,8 +86,11 @@ class ActionLine:
         self.is_valid = True
         self.was_processed = False
 
-    def get(self, tag: str):
-        return self.key_values.get(tag, None)
+    def get(self, key: str):
+        return self.key_values.get(key, None)
+
+    def set(self, key: str, value: str) -> None:
+        self.key_values[key] = value
 
     def mark_as_processed(self):
         self.was_processed = True

@@ -6,6 +6,7 @@ from typing import Dict, List, Union, Tuple
 
 import pandas as pd
 from numpy import int64
+import numpy as np
 from pandas import DataFrame, Series
 
 
@@ -61,6 +62,11 @@ class OrderManager:
             updated_shares = self.orders_df.loc[row_index, 'shares']
             self.save_orders()
             print(f"Updated order with order_id:{order_id} shares from {current_shares} to {updated_shares}")
+
+            if updated_shares == 0:
+                self.orders_df.loc[row_index, 'is_active'] = False
+                self.save_orders()
+                print(f"Updated order with order_id:{order_id} to be inactive")
 
             return updated_shares
         else:
@@ -207,11 +213,14 @@ class OrderManager:
 
         return outcome
 
-    def populate_missing_values(self, master_row: Series, row_with_missing_values: Series) -> Series:
+    def populate_missing_values(self, master_row: Series, new_row: Series) -> Series:
         row = master_row.copy()
         for k, v in master_row.items():
-            if k in row_with_missing_values:
-                row[k] = row_with_missing_values[k]
+            if k in new_row:
+                new_v = new_row[k]
+                if isinstance(v, np.bool_):
+                    new_v = OrderManager.str_to_bool(new_v)
+                row[k] = new_v
 
         OrderManager.normalize_orders_col_types(row)
         return row
@@ -232,7 +241,13 @@ class OrderManager:
         return orders_df_copy
 
     @staticmethod
+    def str_to_bool(s):
+        return s.lower() in ['true', '1', 'yes', 'y', 't']
+
+    @staticmethod
     def normalize_orders_col_types(orders: Union[DataFrame, Series]):
         orders[['order_id', 'uuid', 'shares']] = orders[['order_id', 'uuid', 'shares']].astype(int64)
         orders['price'] = orders['price'].astype(float)
-        orders['is_active'] = orders['is_active'].astype(bool)
+        if isinstance(orders, DataFrame):
+            # Python chokes on astype(bool) for series
+            orders['is_active'] = orders['is_active'].astype(bool)

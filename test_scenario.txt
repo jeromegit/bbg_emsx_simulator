@@ -29,22 +29,33 @@
 #    * continue (continue forever until the app is killed)
 
 # Example of a real scenario
+update_order order_id=456 is_active=True
 update_order order_id=456 shares=1000      label="starts with small qty"
 request_ioi uuid=1234
 wait uuid=1234 orderid=456 35=D qty=1000   label="BBG sends indication"
-#
+
 reserve uuid=1234 orderid=456 qty=1000     label="Request the full (small) qty"
 wait uuid=1234 orderid=456 35=G qty=0      label="BBG reduced shs"
 wait uuid=1234 orderid=456 35=D 39=0       label="BBG accepted reserve request"
 ack uuid=1234 orderid=456 qty=1000
-#
+
 update_order order_id=456 shares=10000     label="Update to larger qty"
 wait uuid=1234 orderid=456 35=G qty=10000  label="BBG updates shs"
 
 reserve uuid=1234 orderid=456 qty=10000        label="Reserve for larger qty"
 wait uuid=1234 orderid=456 35=G qty=0          label="BBG reduced shs"
 wait uuid=1234 orderid=456 35=D 39=0 qty=10000 label="BBG accepted reserve request"#
-fill uuid=1234 orderid=456 qty=100
+fill uuid=1234 orderid=456 qty=1000
 dfd uuid=1234 orderid=456 qty=1000
 wait uuid=1234 orderid=456 35=G qty=9000       label="BBG sent reduced shs"
+
+# Test 100% fill with cancelling of the order
+update_order order_id=456 shares=2222     label="Update to recognizable qty"
+reserve uuid=1234 orderid=456 qty=2222        label="Reserve"
+wait uuid=1234 orderid=456 35=G qty=0          label="BBG reduced shs=0"
+wait uuid=1234 orderid=456 35=D 39=0 qty=2222 label="BBG accepted reserve request"
+fill uuid=1234 orderid=456 qty=2222
+wait uuid=1234 orderid=456 35=G qty=0       label="BBG sent reduced shs=0"
+wait uuid=1234 orderid=456 35=F             label="BBG sent cancel"
+
 continue

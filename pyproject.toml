@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bbg_emsx_simulator"
-version = "0.2.2"
+version = "0.2.3"
 description = "A FIX server and client simulator for Bloomberg IOI Network Indications of Interest & Trade Advertisement Fix Specification."
 authors = ["Jerome Provensal <jeromegit@provensal.com>"]
 

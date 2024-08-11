@@ -66,7 +66,8 @@ def has_message_been_received(message_kvs: Dict[str, str]) -> bool:
     log("NOT FOUND!!", f"searched:{pretty_kvs(message_kvs)} in {len(received_app_messages)} received messages(s)")
     return False
 
-def pretty_kvs(kvs:Dict[str, str])->str:
+
+def pretty_kvs(kvs: Dict[str, str]) -> str:
     return ' | '.join([f"{k}={v}" for k, v in kvs.items()])
 
 
@@ -118,7 +119,6 @@ def process_action_line(application: ClientApplication, action_line: ActionLine)
         row = pd.Series(action_line.key_values)
         order_manager.update_or_add_row(-1, row, True)
         sleep_secs = 2
-        log('SLEEP!', f"Sleep for {sleep_secs} sec(s)")
         time.sleep(sleep_secs)
 
     else:

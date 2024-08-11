@@ -6,7 +6,7 @@ import quickfix as fix
 from pandas import Series
 
 from fix_application import FIXApplication, FIXMessage, get_utc_transactime, log, string_to_message, \
-    create_fix_string_from_dict
+    create_fix_string_from_dict, LOG_MSGTYPE_RCVD_APP
 from order_manager import OrderManager
 
 
@@ -58,7 +58,7 @@ class ServerApplication(fix.Application):
 
     def fromApp(self, message, session_id):
         message = FIXMessage(message)
-        log('Rcvd APP', message)
+        log(LOG_MSGTYPE_RCVD_APP, message)
         self.process_message(message)
 
     def process_message_from_app_queue(self):
@@ -97,20 +97,20 @@ class ServerApplication(fix.Application):
             symbol_starts_with_z = symbol.startswith('Z')
             # Reject if the size requested is smaller than what's left
             if corrected_qty >= 0 and not symbol_starts_with_z:
-                log('Rcvd APP', 'Reserve request, ACCEPTED')
+                log(LOG_MSGTYPE_RCVD_APP, 'Reserve request, ACCEPTED')
                 # Before sending the accept first send a 35=G with the reduced qty
                 self.send_correct_message(order_id, corrected_qty)
                 self.send_reserve_accept_message(message)
             else:
                 text_message = f"symbol:{symbol} starts with a Z" if symbol_starts_with_z else \
                     f"not enough shares left. current:{current_qty} vs reserve:{qty_to_reserve}"
-                log('Rcvd APP', f"Reserve request, REJECTED, because {text_message}")
+                log(LOG_MSGTYPE_RCVD_APP, f"Reserve request, REJECTED, because {text_message}")
                 self.send_reserve_reject_message(message, text_message)
         else:
             log("ERROR!!!", f"Can't find qty for order_id:{order_id}")
 
     def process_execution_report_message(self, message: FIXMessage):
-        # For now, only do something once we get the Fill or DFD
+        # For now, only do something once we get a Fill or DFD
         if (message.get(fix.OrdStatus()) == fix.OrdStatus_DONE_FOR_DAY or
                 message.get(fix.OrdStatus()) == fix.OrdStatus_FILLED):
             clordid = message.get(fix.ClOrdID())
@@ -120,9 +120,13 @@ class ServerApplication(fix.Application):
             cum_qty = int(message.get(fix.CumQty()))
             updated_qty = self.order_manager.update_order_shares(oms_order_id, -cum_qty)
             if updated_qty is not None:
-                self.send_correct_message(oms_order_id, int(updated_qty))
+                updated_qty = int(updated_qty)
+                self.send_correct_message(oms_order_id, updated_qty)
+
+                if updated_qty == 0:
+                    self.send_cancel_message(oms_order_id)
             else:
-                log('Rcvd APP', 'Error with order update.')
+                log(LOG_MSGTYPE_RCVD_APP, 'Error with order update.')
 
     def send_correct_message(self, order_id: str, corrected_qty: int = 0):
         correct_message = FIXApplication.get_latest_fix_message_per_oms_order_id(order_id)
@@ -130,6 +134,13 @@ class ServerApplication(fix.Application):
             correct_message.set(fix.OrderQty(), str(corrected_qty))
             correct_message.set(fix.OrdStatus(), None)
             ServerApplication.create_order_message(MessageAction.ChangeOrder, correct_message, True, True)
+
+    def send_cancel_message(self, order_id: str):
+        cancel_message = FIXApplication.get_latest_fix_message_per_oms_order_id(order_id)
+        if cancel_message:
+            cancel_message.set(fix.OrderQty(), str(0))
+            cancel_message.set(fix.OrdStatus(), None)
+            ServerApplication.create_order_message(MessageAction.CancelOrder, cancel_message, True, True)
 
     def send_reserve_accept_message(self, reserve_request_message: FIXMessage):
         reserve_accept_message = FIXMessage(reserve_request_message)

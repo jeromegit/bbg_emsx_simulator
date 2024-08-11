@@ -4,7 +4,8 @@ from typing import Dict, Union
 
 import quickfix as fix
 
-from fix_application import FIXApplication, FIXMessage, string_to_message, get_utc_transactime, log
+from fix_application import FIXApplication, FIXMessage, string_to_message, get_utc_transactime, log, \
+    LOG_MSGTYPE_RCVD_APP
 
 
 class ExecutionReportType(Enum):
@@ -57,7 +58,7 @@ class ClientApplication(fix.Application):
 
     def fromApp(self, message, session_id):
         message = FIXMessage(message)
-        log('Rcvd APP', message)
+        log(LOG_MSGTYPE_RCVD_APP, message)
         self.from_app_queue.put(message)
         self.process_message(message)
 
@@ -69,24 +70,25 @@ class ClientApplication(fix.Application):
             if message.get(fix.OrdStatus()) == fix.OrdStatus_NEW:
                 self.reserve_request_accepted = True
                 clordid = message.get(fix.ClOrdID())
-                log('Rcvd APP', f'Reserve request, ACCEPTED (on clordid:{clordid})')
+                log(LOG_MSGTYPE_RCVD_APP, f'Reserve request, ACCEPTED (on clordid:{clordid})')
                 self.accepted_reserve_clordid_per_oms_order_id[oms_order_id] = clordid
-            else:
-                FIXApplication.set_latest_fix_message_per_oms_order_id(oms_order_id, message)
+            FIXApplication.set_latest_fix_message_per_oms_order_id(oms_order_id, message)
 
         elif message.get(fix.OrdStatus()) == fix.OrdStatus_REJECTED:
-            log('Rcvd APP', 'Reserve request, REJECTED')
+            log(LOG_MSGTYPE_RCVD_APP, 'Reserve request, REJECTED')
 
         elif msg_type == fix.MsgType_OrderCancelRequest:
             FIXApplication.set_latest_fix_message_per_oms_order_id(oms_order_id, None)
+
+        elif msg_type == fix.MsgType_OrderCancelReplaceRequest:
+            FIXApplication.set_latest_fix_message_per_oms_order_id(oms_order_id, message)
 
     def dequeue(self) -> Union[str, None]:
         # if there's nothing to dequeue, the get method will throw an exception
         try:
             message = self.from_app_queue.get(block=False)
             return message
-        except Exception as e:
-            #            print(f"In Dequeue. Received execption:{e}")
+        except Exception:
             return None
 
     def is_logged_on(self):
@@ -128,8 +130,6 @@ class ClientApplication(fix.Application):
 
     def send_execution_report(self, uuid: str, oms_order_id: str, fill_shares: str | None = None,
                               execution_type: ExecutionReportType = ExecutionReportType.NewAck):
-        if not self.reserve_request_accepted or self.dfd_sent:
-            return
 
         latest_message = FIXApplication.get_latest_fix_message_per_oms_order_id(oms_order_id)
         if latest_message:
@@ -177,6 +177,10 @@ class ClientApplication(fix.Application):
                     log_msg_type = 'Snd Partial'
                 leaves_qty = int(order_qty) - fill_shares
 
+            tif = latest_message.get(fix.TimeInForce())
+            if tif is None:
+                tif = fix.TimeInForce_DAY
+
             message = string_to_message(fix.MsgType_ExecutionReport, '|'.join([
                 f"6={price}",
                 f"11={clordid}",
@@ -197,7 +201,7 @@ class ClientApplication(fix.Application):
                 f"50={uuid}",
                 f"54={latest_message.get(fix.Side())}",
                 f"55={latest_message.get(fix.Symbol())}",
-                f"59={latest_message.get(fix.TimeInForce())}",
+                f"59={tif}",
                 f"60={get_utc_transactime()}",
                 f"76={FIXApplication.EXEC_BROKER}",
                 f"126={expire_time}",

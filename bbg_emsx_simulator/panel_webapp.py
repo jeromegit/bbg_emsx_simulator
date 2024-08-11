@@ -23,16 +23,24 @@ PUSH_BUTTON = 'push'
 order_manager = OrderManager()
 order_grid_df = order_manager.create_orders_df_copy()
 last_tailed_log_line = ''
+last_order_file_timestamp = ''
 fix_server_log_file_path = Path(FIX_SERVER_LOG_FILE_PATH)
 
 
 # -- Callbacks
-def refresh(_):
-    order_manager.read_orders_from_file()
-    set_grid_order_df(order_manager.create_orders_df_copy())
-    #    log_to_pane(f"Refresh: id:{id(order_grid_df)}:\n {order_grid_df}")
-    last_update = order_manager.get_file_timestamp()
-    log_to_pane(f"Order grid was refreshed from the file (last_update: {last_update})")
+def refresh_callback(_):
+    refresh_from_order_file()
+
+
+def refresh_from_order_file():
+    global last_order_file_timestamp
+    order_file_timestamp = order_manager.get_file_timestamp()
+    if last_order_file_timestamp < order_file_timestamp:
+        last_order_file_timestamp = order_file_timestamp
+        order_manager.read_orders_from_file()
+        set_grid_order_df(order_manager.create_orders_df_copy())
+        #    log_to_pane(f"Refresh: id:{id(order_grid_df)}:\n {order_grid_df}")
+        log_to_pane(f"Order grid was refreshed from the file (last_update: {order_file_timestamp})")
 
 
 def add_row(_):
@@ -86,6 +94,7 @@ def html_panel_css() -> str:
     </style>"""
 
     return html_panel_css
+
 
 def highlight_tags_in_html_lines(lines: List[str]) -> List[str]:
     hightlighted_lines: List[str] = []
@@ -186,7 +195,7 @@ add_row_button = pn.widgets.Button(name='Add row', button_type='primary')
 add_row_button.on_click(add_row)
 
 refresh_button = pn.widgets.Button(name='Refresh')
-refresh_button.on_click(refresh)
+refresh_button.on_click(refresh_callback)
 
 log_title = pn.pane.Markdown("## Server FIX Log ")
 
@@ -200,7 +209,8 @@ html_pane_styles = {
 html_pane = pn.pane.HTML("""(waiting for log...)""", styles=html_pane_styles)
 
 # Init global vars used in the call back
-last_tailed_log_line, last_modified, last_log_line_count, current_modified = '',  0, 0, 0
+last_tailed_log_line, last_order_file_timestamp, last_modified, last_log_line_count, current_modified = '', '', 0, 0, 0
+pn.state.add_periodic_callback(refresh_from_order_file, period=1_000)
 pn.state.add_periodic_callback(tail_server_fix_log_in_html_pane, period=1_000)
 
 table_theme = pn.widgets.Select(name='Select',

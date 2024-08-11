@@ -213,6 +213,8 @@ def get_utc_transactime(offset_in_secs: int = 0) -> str:
     return utc_time.strftime("%Y%m%d-%H:%M:%S.%f")
 
 
+LOG_MSGTYPE_RCVD_APP = 'Rcvd APP'
+
 def log(msg_type: str, message: str | Dict[str, str] | fix.Message | FIXMessage | None = None,
         pre_timestamp: str = '') -> None:
     if message == None:

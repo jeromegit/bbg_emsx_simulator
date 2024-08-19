@@ -49,7 +49,7 @@ def add_row(_):
     seconds_since_midnight = time.time() % 86400
     new_row = [seconds_since_midnight, True, 0, VALID_TICKERS[0], VALID_SIDES[0], 10000, 12.34]
     order_grid_df.loc[len(order_grid_df)] = new_row
-    OrderManager.normalize_orders_df_col_types(order_grid_df)
+    OrderManager.normalize_orders_col_types(order_grid_df)
     set_grid_order_df(order_grid_df)
 
 
